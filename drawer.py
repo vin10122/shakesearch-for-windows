@@ -9,6 +9,7 @@ import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
 from image_clipboard import copy_image_to_clipboard
+from lens_handoff import LensHandoff
 
 load_dotenv()
 
@@ -211,6 +212,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     color: var(--text-secondary);
   }
 
+  .lens-search {
+    background: var(--card-surface);
+    border: 1px solid var(--border-glass);
+    border-radius: 16px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .lens-search textarea {
+    width: 100%; min-height: 56px; max-height: 140px; resize: vertical;
+    background: #201812; color: var(--text-primary);
+    border: 1px solid var(--border-glass); border-radius: 8px;
+    padding: 8px; font: inherit; user-select: text;
+  }
+
   .chips-container {
     display: flex;
     flex-direction: column;
@@ -339,6 +357,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <span class="status-text" id="copyImageStatus" role="status" aria-live="polite"></span>
     </div>
 
+    <div class="lens-search">
+      <label for="lensQuestion">Cerca con Google Lens</label>
+      <textarea id="lensQuestion" maxlength="500" placeholder="Domanda facoltativa, per esempio: dove posso comprarlo?"></textarea>
+      <span>Il ritaglio viene inviato a Google. Integrazione sperimentale.</span>
+      <button class="btn-action" id="sendToLensButton" onclick="sendToLens()">Invia a Lens</button>
+      <span id="lensStatus" role="status" aria-live="polite"></span>
+    </div>
+
     <div class="status-text" id="statusText">⏳ Analyzing selection...</div>
     <div class="chips-container" id="chipsContainer"></div>
     <div class="chat-box" id="chatBox"></div>
@@ -354,6 +380,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <script>
   let isFullscreen = false;
+
+  async function sendToLens() {
+    const button = document.getElementById('sendToLensButton');
+    const status = document.getElementById('lensStatus');
+    button.disabled = true;
+    status.textContent = 'Apertura del browser…';
+    try {
+      const result = await pywebview.api.send_to_lens(document.getElementById('lensQuestion').value);
+      status.textContent = result.ok ? 'Browser aperto per l’invio a Google Lens.' : result.error;
+    } catch (error) {
+      status.textContent = 'Impossibile aprire Google Lens. Riprova.';
+    } finally {
+      button.disabled = false;
+    }
+  }
 
   async function copyImage() {
     const button = document.getElementById('copyImageButton');
@@ -469,6 +510,8 @@ class DrawerApi:
         self.conversation_history = []
         self.is_first_prompt = True
         self.client = None
+        self._lens_lock = threading.Lock()
+        self._lens_handoffs = []
         if GROQ_API_KEY:
             try:
                 from groq import Groq
@@ -504,6 +547,24 @@ class DrawerApi:
 
     def send_chat(self, text):
         threading.Thread(target=self._ask_ai, args=(text,), daemon=True).start()
+
+    def send_to_lens(self, question=''):
+        if not self.image_bytes:
+            return dict(ok=False, error='Immagine non disponibile. Esegui una nuova cattura.')
+        try:
+            with self._lens_lock:
+                self._lens_handoffs = [item for item in self._lens_handoffs if not item.closed]
+                if len(self._lens_handoffs) >= 4:
+                    self._lens_handoffs.pop(0).close()
+                handoff = LensHandoff(self.image_bytes, question)
+                handoff.open()
+                self._lens_handoffs.append(handoff)
+            return dict(ok=True)
+        except ValueError as error:
+            return dict(ok=False, error=str(error))
+        except Exception:
+            logging.getLogger('shakesearch').exception('Unable to prepare Google Lens handoff')
+            return dict(ok=False, error='Impossibile avviare Lens. Controlla il browser predefinito e riprova.')
 
     def open_image_for_text(self):
         if not self.image_bytes:

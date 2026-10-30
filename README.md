@@ -17,7 +17,7 @@ Circle to Search is Google's visual search feature for supported Android phones.
 
 Google explains the original Android feature in its [introduction to Circle to Search](https://blog.google/products/search/google-circle-to-search-android/). ShakeSearch takes inspiration from its screen selection gesture and is developed independently of Google.
 
-ShakeSearch currently provides AI-generated explanations and answers about the selected content. It does not yet search the web for products, articles or matching images. **Image search is coming soon.**
+ShakeSearch currently provides AI-generated explanations and answers about the selected content. An experimental **Invia a Lens** option is available to try sending a selection to Google Lens in your browser. **Built-in image search is coming soon.**
 
 It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to understand what is on your screen.
 
@@ -67,6 +67,7 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
 - Type a question in the input box at the bottom to ask about the image.
 - Click **Copia immagine** to copy the original capture to the Windows clipboard. A message confirms the copy or explains an error.
 - Click **Apri immagine per copiare testo** to open the image alongside its recognized text.
+- To try external image search, add an optional question under **Cerca con Google Lens** and click **Invia a Lens**.
 
 ## Files
 
@@ -78,6 +79,7 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
 | drawer.py | Drawer window: image preview, AI chat |
 | ocr_viewer.py | Image viewer with editable text recognition and clipboard support |
 | image_clipboard.py | Windows clipboard image transfer (DIB and PNG) |
+| lens_handoff.py | Experimental image handoff to Google Lens in the default browser |
 | requirements.txt | Python dependencies |
 | .env | Your API keys (not tracked by git) |
 | .gitignore | Files excluded from version control |
@@ -127,6 +129,24 @@ selected portion, or all text when nothing is selected. **Ctrl+C** copies a text
 selection as usual. Use **Rileggi testo** to retry recognition. Empty results,
 request failures and truncated text are shown in the window.
 
+## Google Lens handoff (experimental)
+
+Enter an optional question in **Cerca con Google Lens**, then click **Invia a Lens**.
+ShakeSearch opens the default browser and prepares an automatic image upload to
+Google Lens. The question is included in the request. The capture stays on your
+computer until the browser sends it directly to Google; no public image-hosting
+service is used. A temporary, one-use local page handles the transfer and expires
+after two minutes. No Groq key is needed for this option.
+
+This integration uses Google's web upload form, not an official Lens API. The
+browser's multipart image-and-question submission has been tested with an
+intercepted destination. **Actual Google results and acceptance of the optional
+question have not yet been verified**, because Google access is blocked in the
+cloud development environment. Google may change the form, ignore the question,
+or ask for consent or a verification step. If automatic file preparation is not
+supported by the browser, the temporary page offers image download and a link to
+Lens for manual upload. An opened browser tab does not confirm a successful search.
+
 ## Troubleshooting
 
 If image copying reports a missing dependency, run `python -m pip install -r requirements.txt` to install `pywin32` on Windows.
@@ -144,6 +164,15 @@ Run the Qt rendering, input, multi-monitor lifecycle and crop tests without a de
 
 ```bash
 QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v
+```
+
+For the optional browser handoff check (all requests to the Lens upload endpoint
+are intercepted, so this does not validate Google search results):
+
+```bash
+python -m pip install playwright
+python -m playwright install chromium
+python tests/check_lens_browser.py
 ```
 
 ## License
