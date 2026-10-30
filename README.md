@@ -141,7 +141,11 @@ It does not open the default browser, minimize the chat or close the panel.
 With **Usa Lens per le prossime domande** checked, messages in the main input use
 the same image-search session. Uncheck it to return to Groq's AI explanations.
 Lens replies are the text and links read from Google, not AI-generated guesses.
-If no readable results are found, the chat reports an error. No additional API
+Menus, headers, footers and generic page links are excluded. The reader accepts
+structured result cards, visual matches and recognized answer blocks, rather than
+the full page text. If Google opens its homepage instead of search results, the
+chat reports that problem and shows the internal window for inspection. If no
+readable results are found, the chat reports an error. No additional API
 key or public image-hosting service is used; the image is sent directly to Google.
 
 The internal Google window has no access to ShakeSearch's application API. It is
@@ -184,6 +188,7 @@ does not validate live Google results):
 python -m pip install playwright
 python -m playwright install chromium
 python tests/check_lens_chat_browser.py
+python tests/check_lens_reader_browser.py
 ```
 
 ## License

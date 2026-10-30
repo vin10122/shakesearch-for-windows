@@ -36,11 +36,13 @@ with sync_playwright() as runner:
             query = parse_qs(url.query).get('q', [''])[0]
             assert parse_qs(url.query)['p'] == ['IMAGE_SESSION']
             route.fulfill(status=200, content_type='text/html; charset=utf-8', body=f'''<!doctype html><title>Google Lens</title>
-                <main><h1>Fixture Lens result</h1><p>{html.escape(query)}</p>
+                <header><a href="https://about.google/">Chi siamo</a></header>
+                <main><article><h3>Fixture Lens result</h3><p>{html.escape(query)}</p>
                 <p>These are simulated search results used to verify reading from the browser, not invented AI answers.</p>
                 <a href="https://example.org/product">Source article</a>
                 <a href="https://www.google.com/preferences">Google settings</a>
-                <a href="javascript:alert(1)">Invalid source</a></main>''')
+                <a href="javascript:alert(1)">Invalid source</a></article></main>
+                <footer>Italia Pubblicità Soluzioni aziendali</footer>''')
         else:
             route.abort()
     class View:
@@ -63,7 +65,7 @@ with sync_playwright() as runner:
         assert len(uploaded) == 1 and len(views) == 1
         assert 'Che oggetto è?' in first['text']
         assert 'Dove posso comprarlo?' in second['text']
-        assert first['links'] == [{'title': 'Source article', 'url': 'https://example.org/product'}]
+        assert first['links'] == [{'title': 'Fixture Lens result', 'url': 'https://example.org/product'}]
         chat = browser.new_page()
         chat.set_content(drawer.HTML_TEMPLATE)
         chat.evaluate('''async results => {
