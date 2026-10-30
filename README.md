@@ -11,13 +11,15 @@ ShakeSearch lets you select any area of your screen by shaking your mouse or pre
 - A text input to ask custom questions about the selection
 - Options to copy the image or search the web for what you circled
 
+It is inspired by Circle to Search on Android and Magic Pointer on Googlebook OS, but it is an independent project with no affiliation with Google.
+
 It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to understand what is on your screen.
 
 **This is experimental software.** It is provided as-is without warranty. Use it at your own risk. The project is not affiliated with, endorsed by, or connected to Google LLC or any of its products.
 
 ## Safe name
 
-The project name "ShakeSearch" was chosen to avoid any trademark conflict with Google. Names like "Magic Pointer", "Circle to Search", and "Googlebook" belong to Google and are not used in this project.
+The project name "ShakeSearch" was chosen to avoid any trademark conflict. Circle to Search and Magic Pointer are trademarks of Google LLC. This project is not affiliated with, endorsed by, or connected to Google LLC or any of its products.
 
 ## Requirements
 
