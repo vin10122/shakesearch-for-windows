@@ -4,6 +4,10 @@ import json
 import io
 import base64
 import threading
+import logging
+import subprocess
+import tempfile
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -313,6 +317,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <button class="btn-action" onclick="pywebview.api.copy_image()">
         📋 Copy
       </button>
+      <button class="btn-action" id="openTextImage" onclick="openImageForText()">
+        Apri immagine per copiare testo
+      </button>
       <button class="btn-action" onclick="toggleFs()">
         <span id="fsActionLabel">⛶ Fullscreen</span>
       </button>
@@ -333,6 +340,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <script>
   let isFullscreen = false;
+
+  async function openImageForText() {
+    const button = document.getElementById('openTextImage');
+    button.disabled = true;
+    try {
+      const result = await pywebview.api.open_image_for_text();
+      if (!result.ok) setStatus(result.error);
+    } catch (error) {
+      setStatus('Impossibile aprire l’immagine. Riprova.');
+    } finally {
+      button.disabled = false;
+    }
+  }
 
   function toggleFs() {
     isFullscreen = !isFullscreen;
@@ -412,6 +432,10 @@ GLOBAL_WINDOW = None
 class DrawerApi:
     def __init__(self, image_path, initial_geom):
         self.image_path = image_path
+        try:
+            self.image_bytes = Path(image_path).read_bytes()
+        except OSError:
+            self.image_bytes = None
         self.initial_geom = initial_geom
         self.conversation_history = []
         self.is_first_prompt = True
@@ -454,6 +478,27 @@ class DrawerApi:
 
     def send_chat(self, text):
         threading.Thread(target=self._ask_ai, args=(text,), daemon=True).start()
+
+    def open_image_for_text(self):
+        if not self.image_bytes:
+            return dict(ok=False, error='Immagine non disponibile. Esegui una nuova cattura.')
+        try:
+            script = str(Path(__file__).with_name('ocr_viewer.py'))
+            log_path = os.path.join(tempfile.gettempdir(), 'shakesearch.log')
+            executable = Path(sys.executable)
+            if executable.name.lower() == 'pythonw.exe' and executable.with_name('python.exe').is_file():
+                executable = executable.with_name('python.exe')
+            with open(log_path, 'a', encoding='utf-8') as log:
+                process = subprocess.Popen([str(executable), script, '--stdin'],
+                                           stdin=subprocess.PIPE, stdout=log, stderr=log,
+                                           creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            # Pass the immutable capture, never a path overwritten by later captures.
+            with process.stdin:
+                process.stdin.write(self.image_bytes)
+            return dict(ok=True)
+        except Exception:
+            logging.getLogger('shakesearch').exception('Unable to open image text viewer')
+            return dict(ok=False, error='Impossibile aprire l’immagine. Controlla shakesearch.log.')
 
     def _ask_ai(self, text):
         global GLOBAL_WINDOW
