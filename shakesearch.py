@@ -15,7 +15,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 from dotenv import load_dotenv
 from pynput import mouse, keyboard
 from mss import MSS
-from PIL import Image, ImageEnhance, ImageTk, ImageDraw
+from PIL import Image, ImageEnhance, ImageTk, ImageDraw, ImageFilter
 import tkinter as tk
 
 # DPI awareness su Windows
@@ -283,6 +283,10 @@ class AnimatedScreenOverlay:
         self.win.bind("<KP_Enter>", self.on_key_enter)
         self.win.bind("<Escape>", self.on_key_escape)
 
+        self.animation_job = None
+        self.animation_started = time.monotonic()
+        self.animate_plasma()
+
     def prepare_visuals(self):
         margin = 16
         target_w = max(100, self.width - (margin * 2))
@@ -307,6 +311,22 @@ class AnimatedScreenOverlay:
             outline=COLOR_AMBER, width=2
         )
 
+        # Render a soft light layer at bounded resolution on each monitor.
+        self.plasma_scale = min(1.0, 640 / max(self.width, self.height))
+        self.plasma_size = (
+            max(1, round(self.width * self.plasma_scale)),
+            max(1, round(self.height * self.plasma_scale)),
+        )
+        glow = Image.new("RGBA", self.plasma_size)
+        draw = ImageDraw.Draw(glow)
+        inset = max(1, round(margin * self.plasma_scale))
+        draw.rectangle(
+            (inset, inset, glow.width - inset, glow.height - inset),
+            outline=(255, 115, 30, 130), width=3,
+        )
+        self.edge_glow = glow.filter(ImageFilter.GaussianBlur(5))
+        self.plasma_item = self.canvas.create_image(0, 0, anchor="nw")
+
         self.header_text = self.canvas.create_text(
             self.width // 2,
             38,
@@ -314,6 +334,56 @@ class AnimatedScreenOverlay:
             fill="#ffffff",
             font=("Segoe UI", 12, "bold")
         )
+
+    def render_plasma_frame(self, elapsed):
+        """Converge rippling light from the perimeter, then leave an edge glow."""
+        frame = self.edge_glow.copy()
+        travel_duration = 1.1
+        fade_duration = 0.55
+        if elapsed >= travel_duration + fade_duration:
+            return frame
+
+        progress = min(1.0, max(0.0, elapsed / travel_duration))
+        # Ease out toward a small central glow instead of ending abruptly.
+        contraction = (1.0 - progress) ** 1.6
+        opacity = 1.0 - max(0.0, elapsed - travel_duration) / fade_duration
+        width, height = self.plasma_size
+        cx, cy = width / 2, height / 2
+        margin = 16 * self.plasma_scale
+        light = Image.new("RGBA", self.plasma_size)
+        draw = ImageDraw.Draw(light)
+        for band in range(3):
+            points = []
+            radius = min(1.0, contraction + band * 0.035) * 0.96 + 0.025
+            for step in range(129):
+                angle = step * math.tau / 128
+                dx, dy = math.cos(angle), math.sin(angle)
+                # Project onto a rectangular perimeter so all four edges move in.
+                reach = 1 / max(abs(dx), abs(dy))
+                ripple = math.sin(angle * 9 - elapsed * 12 + band) * 0.025
+                ripple += math.sin(angle * 17 + elapsed * 8) * 0.012
+                r = max(0.01, min(1.0, radius + ripple * (1 - progress)))
+                points.append((
+                    cx + dx * reach * (cx - margin) * r,
+                    cy + dy * reach * (cy - margin) * r,
+                ))
+            draw.line(points, fill=(255, 100 + band * 35, 25, int(180 * opacity)),
+                      width=max(1, 4 - band), joint="curve")
+        halo = light.filter(ImageFilter.GaussianBlur(7))
+        frame = Image.alpha_composite(frame, halo)
+        return Image.alpha_composite(frame, light.filter(ImageFilter.GaussianBlur(1)))
+
+    def animate_plasma(self):
+        self.animation_job = None
+        if not self.win.winfo_exists():
+            return
+        elapsed = time.monotonic() - self.animation_started
+        frame = self.render_plasma_frame(elapsed)
+        frame = frame.resize((self.width, self.height), Image.Resampling.BILINEAR)
+        self.plasma_photo = ImageTk.PhotoImage(frame)
+        self.canvas.itemconfigure(self.plasma_item, image=self.plasma_photo)
+        if elapsed < 1.65:
+            self.animation_job = self.win.after(33, self.animate_plasma)
 
     def on_press(self, e):
         # Se era già presente una selezione da confermare, un nuovo click la cancella per rifarla
@@ -426,6 +496,9 @@ class AnimatedScreenOverlay:
             self.manager.cancel()
 
     def destroy(self):
+        if self.animation_job is not None:
+            self.win.after_cancel(self.animation_job)
+            self.animation_job = None
         if self.win and self.win.winfo_exists():
             self.win.destroy()
 
