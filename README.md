@@ -1,6 +1,6 @@
 # ShakeSearch
 
-![ShakeSearch Preview](Logo%20ShakeSearch%20su%20sfondo%20pesca%20morbido.png)
+![ShakeSearch](logo-shakesearch.png)
 
 ShakeSearch is an experimental open-source project for Windows that brings an AI-powered screen selection tool to your desktop. It is inspired by features like Google's Magic Pointer and Circle to Search, but it is an independent project with no affiliation with Google.
 
