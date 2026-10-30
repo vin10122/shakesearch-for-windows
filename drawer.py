@@ -606,6 +606,10 @@ class DrawerApi:
             return dict(ok=True, **result)
         except Exception as error:
             logging.getLogger('shakesearch').exception('Unable to read Lens results')
+            try:
+                self._lens_status('Richiesta Lens non completata. Nessun risultato ricevuto.')
+            except Exception:
+                pass  # The user may have closed the chat during the request.
             return dict(ok=False, error=str(error))
 
     def _close_lens_session(self):

@@ -24,9 +24,8 @@ class LensSessionTests(unittest.TestCase):
         window.get_current_url.return_value = URL
         window.evaluate_js.return_value = SNAPSHOT
         factory = Mock(return_value=window)
-        session = LensSession(b'image bytes', window_factory=factory)
-        with patch('lens_session.LensHandoff') as handoff, patch('lens_session.time.sleep'):
-            handoff.return_value.url = 'http://127.0.0.1:1234/token'
+        session = LensSession(b'image bytes', window_factory=factory, uploader=Mock(return_value=URL))
+        with patch('lens_session.time.sleep'):
             first = session.query('What is it?')
             second = session.query('Where to buy?')
         self.assertEqual(first, second)
@@ -36,38 +35,35 @@ class LensSessionTests(unittest.TestCase):
         self.assertIsNone(factory.call_args.kwargs['js_api'])
         self.assertTrue(factory.call_args.kwargs['hidden'])
         self.assertEqual(parse_qs(urlsplit(window.load_url.call_args.args[0]).query)['p'], ['IMAGE_SESSION'])
-        handoff.return_value.start.assert_called_once()
-        handoff.return_value.close.assert_called_once()
+        session.uploader.assert_called_once_with(b'image bytes')
 
-    def test_verification_shows_google_window_then_resumes(self):
-        challenge = dict(SNAPSHOT, url='https://consent.google.com/m', text='Consent')
+    def test_verification_is_reported_without_showing_a_window(self):
         window = Mock()
         window.get_current_url.return_value = URL
-        window.evaluate_js.side_effect = [challenge, SNAPSHOT, SNAPSHOT]
-        session = LensSession(b'image', window_factory=Mock(return_value=window))
-        with patch('lens_session.LensHandoff'), patch('lens_session.time.sleep'):
-            self.assertEqual(session.query()['text'], SNAPSHOT['text'])
-        window.show.assert_called_once()
-        window.hide.assert_called_once()
+        window.evaluate_js.return_value = dict(SNAPSHOT, url='https://consent.google.com/m')
+        session = LensSession(b'image', window_factory=Mock(return_value=window), uploader=Mock(return_value=URL))
+        with self.assertRaisesRegex(RuntimeError, 'non è stata completata'):
+            session.query()
+        window.show.assert_not_called()
 
     def test_google_error_page_is_not_used_as_search_result(self):
         window = Mock()
         window.get_current_url.return_value = URL
         window.evaluate_js.return_value = dict(SNAPSHOT, title='Error 404 (Not Found)')
-        session = LensSession(b'image', window_factory=Mock(return_value=window))
-        with patch('lens_session.LensHandoff'), self.assertRaisesRegex(RuntimeError, 'pagina di errore'):
+        session = LensSession(b'image', window_factory=Mock(return_value=window), uploader=Mock(return_value=URL))
+        with self.assertRaisesRegex(RuntimeError, 'pagina di errore'):
             session.query()
 
     def test_external_navigation_is_not_read_as_lens(self):
         window = Mock()
         window.get_current_url.return_value = 'https://example.org/something'
-        session = LensSession(b'image', window_factory=Mock(return_value=window))
-        with patch('lens_session.LensHandoff'), self.assertRaisesRegex(RuntimeError, 'esterna inattesa'):
+        session = LensSession(b'image', window_factory=Mock(return_value=window), uploader=Mock(return_value=URL))
+        with self.assertRaisesRegex(RuntimeError, 'esterna inattesa'):
             session.query()
         window.evaluate_js.assert_not_called()
 
     def test_close_releases_hidden_window(self):
-        session = LensSession(b'image')
+        session = LensSession(b'image', uploader=Mock(return_value=URL))
         session.window = Mock()
         session.close()
         session.window.destroy.assert_called_once()
@@ -76,12 +72,12 @@ class LensSessionTests(unittest.TestCase):
 
     def test_close_during_creation_does_not_leave_hidden_window_open(self):
         window = Mock()
-        session = LensSession(b'image')
+        session = LensSession(b'image', uploader=Mock(return_value=URL))
         def factory(*args, **kwargs):
             session.close()
             return window
         session.window_factory = factory
-        with patch('lens_session.LensHandoff'), self.assertRaisesRegex(RuntimeError, 'chiusa'):
+        with self.assertRaisesRegex(RuntimeError, 'chiusa'):
             session.query()
         window.destroy.assert_called_once()
 
@@ -107,8 +103,8 @@ class LensSessionTests(unittest.TestCase):
         navigation = dict(url=URL, title='Google', text='Accedi Gmail Immagini',
                           links=[], complete=True, hasMain=True)
         window.evaluate_js.side_effect = [navigation, navigation, SNAPSHOT, SNAPSHOT]
-        session = LensSession(b'image', window_factory=Mock(return_value=window))
-        with patch('lens_session.LensHandoff'), patch('lens_session.time.sleep'):
+        session = LensSession(b'image', window_factory=Mock(return_value=window), uploader=Mock(return_value=URL))
+        with patch('lens_session.time.sleep'):
             self.assertEqual(session.query()['text'], SNAPSHOT['text'])
         self.assertEqual(window.evaluate_js.call_count, 4)
 
@@ -117,10 +113,40 @@ class LensSessionTests(unittest.TestCase):
         window.get_current_url.return_value = 'https://www.google.com/'
         window.evaluate_js.return_value = dict(url='https://www.google.com/', title='Google',
                                               text='', links=[], complete=True, landing=True)
-        session = LensSession(b'image', window_factory=Mock(return_value=window))
+        session = LensSession(b'image', window_factory=Mock(return_value=window), uploader=Mock(return_value=URL))
         session.result_url = URL
         with patch('lens_session.time.monotonic', side_effect=[0, 0, 0, 9, 9]), patch('lens_session.time.sleep'):
-            with self.assertRaisesRegex(RuntimeError, 'pagina iniziale'):
+            with self.assertRaisesRegex(RuntimeError, 'modulo di caricamento'):
                 session.query()
         self.assertIsNone(session.result_url)
-        window.show.assert_called_once()
+        window.show.assert_not_called()
+
+    def test_failed_upload_never_creates_a_webview(self):
+        factory = Mock()
+        uploader = Mock(side_effect=RuntimeError('Google non ha accettato il file'))
+        session = LensSession(b'image', window_factory=factory, uploader=uploader)
+        with self.assertRaisesRegex(RuntimeError, 'non ha accettato'):
+            session.query()
+        factory.assert_not_called()
+
+    def test_upload_must_confirm_image_context_before_creating_reader(self):
+        factory = Mock()
+        session = LensSession(b'image', window_factory=factory,
+                              uploader=Mock(return_value='https://www.google.com/imghp'))
+        with self.assertRaisesRegex(RuntimeError, 'non ha confermato'):
+            session.query()
+        factory.assert_not_called()
+
+    def test_followup_keeps_original_image_context_if_result_page_hides_it(self):
+        window = Mock()
+        window.get_current_url.return_value = 'https://www.google.com/search?q=first'
+        window.evaluate_js.return_value = dict(SNAPSHOT, url='https://www.google.com/search?q=first')
+        uploader = Mock(return_value=URL)
+        session = LensSession(b'image', window_factory=Mock(return_value=window), uploader=uploader)
+        with patch('lens_session.time.sleep'):
+            session.query('first')
+            session.query('second')
+        query = parse_qs(urlsplit(window.load_url.call_args.args[0]).query)
+        self.assertEqual(query['p'], ['IMAGE_SESSION'])
+        self.assertEqual(query['q'], ['second'])
+        uploader.assert_called_once()

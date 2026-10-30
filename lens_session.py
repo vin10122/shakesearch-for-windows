@@ -4,7 +4,7 @@ import threading
 import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from lens_handoff import LensHandoff
+from lens_upload import upload_image, result_url as is_image_result_url
 logger = logging.getLogger('shakesearch')
 
 READ_RESULTS = r'''(() => {
@@ -123,13 +123,15 @@ def classify(snapshot):
 
 
 class LensSession:
-    def __init__(self, image_bytes, window_factory=None, status=None, timeout=45):
+    def __init__(self, image_bytes, window_factory=None, status=None, timeout=45, uploader=None):
         self.image_bytes = image_bytes
+        self.uploader = uploader or upload_image
         self.window_factory = window_factory
         self.status = status or (lambda text: None)
         self.timeout = timeout
         self.window = None
         self.result_url = None
+        self._image_result_url = None
         self._lock = threading.Lock()
         self._closed = threading.Event()
 
@@ -139,35 +141,37 @@ class LensSession:
         with self._lock:
             if self._closed.is_set():
                 raise RuntimeError('La sessione Lens è stata chiusa.')
-            handoff = None
-            try:
-                if self.result_url is not None:
-                    target = followup_url(self.result_url, question)
-                else:
-                    handoff = LensHandoff(self.image_bytes, question)
-                    handoff.start()
-                    target = handoff.url
-                if self.window is None:
-                    factory = self.window_factory
-                    if factory is None:
-                        import webview
-                        factory = webview.create_window
-                    self.window = factory('Google Lens · Verifica', url=target, hidden=True,
-                                          js_api=None, width=900, height=740, on_top=True)
-                else:
-                    self.window.load_url(target)
-                if self._closed.is_set():
-                    self.close()  # The chat may have closed while the WebView was being created.
-                    raise RuntimeError('La sessione Lens è stata chiusa.')
-                self.status('Lens sta cercando sulla selezione…')
-                return self._read_results()
-            finally:
-                if handoff is not None:
-                    handoff.close()
+            if self.result_url is not None:
+                target = followup_url(self.result_url, question)
+            else:
+                self.status('Invio diretto dell’immagine a Google Lens…')
+                # Python sends the real multipart bytes. No local upload page,
+                # browser file input or visible upload window is involved.
+                target = self.uploader(self.image_bytes)
+                if not is_image_result_url(target):
+                    raise RuntimeError('Google Lens non ha confermato una ricerca associata all’immagine.')
+                self._image_result_url = target
+                if question:
+                    target = followup_url(target, question)
+            if self._closed.is_set():
+                raise RuntimeError('La sessione Lens è stata chiusa.')
+            if self.window is None:
+                factory = self.window_factory
+                if factory is None:
+                    import webview
+                    factory = webview.create_window
+                self.window = factory('ShakeSearch · Lettore Lens', url=target, hidden=True,
+                                      js_api=None, width=900, height=740, on_top=False)
+            else:
+                self.window.load_url(target)
+            if self._closed.is_set():
+                self.close()
+                raise RuntimeError('La sessione Lens è stata chiusa.')
+            self.status('Immagine inviata. Attendo i risultati di Lens…')
+            return self._read_results()
 
     def _read_results(self):
         deadline = time.monotonic() + self.timeout
-        verification_shown = False
         previous = None
         landing_since = None
         last_state = None
@@ -200,12 +204,8 @@ class LensSession:
             if state != 'landing':
                 landing_since = None
             if state == 'verification':
-                previous = None
-                if not verification_shown:
-                    verification_shown = True
-                    self.window.show()
-                    self.status('Google richiede un consenso o una verifica. Completa nella finestra Lens per continuare.')
-                    deadline = time.monotonic() + 180
+                self.result_url = None
+                raise RuntimeError('Google Lens richiede consenso, accesso o verifica. La richiesta automatica non è stata completata e non ci sono risultati da trascrivere.')
             elif state == 'error':
                 self.result_url = None
                 raise RuntimeError('Google Lens ha restituito una pagina di errore, non risultati.')
@@ -215,12 +215,11 @@ class LensSession:
                     landing_since = time.monotonic()
                 elif time.monotonic() - landing_since > 8:
                     self.result_url = None
-                    self.window.show()
-                    raise RuntimeError('Lens ha aperto la pagina iniziale di Google, non i risultati. Ho mostrato la finestra Lens per controllare il caricamento.')
+                    raise RuntimeError('Google Lens ha restituito il modulo di caricamento invece dei risultati. L’immagine non è stata associata a una ricerca leggibile.')
             elif state == 'results':
                 signature = (snapshot['url'], snapshot.get('text'), repr(snapshot.get('links')))
                 if previous == signature:
-                    self.result_url = snapshot['url']
+                    self.result_url = snapshot['url'] if is_image_result_url(snapshot['url']) else self._image_result_url
                     self.window.hide()
                     return dict(text=snapshot.get('text', ''), links=snapshot.get('links', []))
                 previous = signature
@@ -230,7 +229,6 @@ class LensSession:
         if self._closed.is_set():
             raise RuntimeError('La sessione Lens è stata chiusa.')
         self.result_url = None
-        self.window.show()
         raise RuntimeError('Non sono riuscito a leggere risultati reali da Lens. Google potrebbe richiedere una verifica o aver cambiato la pagina.')
 
     def close(self):

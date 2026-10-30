@@ -1,16 +1,17 @@
 """Optional Chromium check of internal Lens chat. All Google pages are fixtures."""
 import html
 import io
-import json
+import httpx
 import os
 from pathlib import Path
 import sys
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PIL import Image
 from playwright.sync_api import sync_playwright
 from lens_session import LensSession
+from lens_upload import upload_image
 import drawer
 
 image = io.BytesIO()
@@ -23,16 +24,7 @@ with sync_playwright() as runner:
     def route_google(route):
         request = route.request
         url = urlsplit(request.url)
-        if url.hostname == '127.0.0.1':
-            route.continue_()
-        elif url.hostname == 'lens.google.com' and url.path == '/v3/upload':
-            assert request.method == 'POST'
-            assert b'\x89PNG' in request.post_data_buffer
-            uploaded.append(request.post_data_buffer)
-            query = parse_qs(url.query).get('q', [''])[0]
-            target = 'https://lens.google.com/search?' + urlencode({'p': 'IMAGE_SESSION', 'q': query})
-            route.fulfill(status=200, content_type='text/html; charset=utf-8', body='<script>location.replace(' + json.dumps(target).replace('<', '\\u003c') + ')</script>')
-        elif url.hostname == 'lens.google.com' and url.path == '/search':
+        if url.hostname == 'lens.google.com' and url.path == '/search':
             query = parse_qs(url.query).get('q', [''])[0]
             assert parse_qs(url.query)['p'] == ['IMAGE_SESSION']
             route.fulfill(status=200, content_type='text/html; charset=utf-8', body=f'''<!doctype html><title>Google Lens</title>
@@ -58,7 +50,16 @@ with sync_playwright() as runner:
         def hide(self): pass
         def show(self): pass
         def destroy(self): self.page.close()
-    session = LensSession(image.getvalue(), window_factory=View, timeout=10)
+    def direct_request(request):
+        assert request.url.host == 'lens.google.com' and request.url.path == '/v3/upload'
+        assert request.method == 'POST' and b'\x89PNG' in request.content
+        assert not views  # No WebView is created until the upload is accepted.
+        uploaded.append(request.content)
+        return httpx.Response(303, headers={'Location': 'https://lens.google.com/search?p=IMAGE_SESSION'})
+    def direct_upload(data):
+        with httpx.Client(transport=httpx.MockTransport(direct_request), follow_redirects=False) as client:
+            return upload_image(data, client=client)
+    session = LensSession(image.getvalue(), window_factory=View, timeout=10, uploader=direct_upload)
     try:
         first = session.query('Che oggetto è? <img src=x onerror=alert(1)>')
         second = session.query('Dove posso comprarlo?')
@@ -82,7 +83,7 @@ with sync_playwright() as runner:
         assert 'Dove posso comprarlo?' in replies.nth(1).inner_text()
         assert chat.locator('.chat-msg-ai img').count() == 0
         assert chat.locator('.chat-msg-ai a').count() == 2
-        print('PASS: internal image upload, actual DOM reading, follow-up session, safe chat rendering and separate reply bubbles')
+        print('PASS: direct Python upload before any WebView, hidden results reading, image-session follow-ups and safe chat replies')
     finally:
         session.close()
         browser.close()
