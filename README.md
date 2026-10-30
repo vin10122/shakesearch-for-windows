@@ -9,7 +9,7 @@ ShakeSearch lets you select any area of your screen by shaking your mouse or pre
 - A preview of the captured image
 - AI-generated suggestions about what is in the image
 - A text input to ask custom questions about the selection
-- Options to copy the image or search the web for what you circled
+- An option to copy the captured image
 
 It is inspired by Circle to Search on Android and Magic Pointer on Googlebook OS, but it is an independent project with no affiliation with Google.
 
@@ -56,14 +56,14 @@ The project name "ShakeSearch" was chosen to avoid any trademark conflict. Circl
 - Press Enter to confirm the selection, or Esc to cancel and try again.
 - A drawer window opens showing the captured image and AI suggestions.
 - Type a question in the input box at the bottom to ask about the image.
-- Click Copy to copy the image to the clipboard, or Search web to look it up online.
+- Click Copy to copy the image to the clipboard.
 
 ## Files
 
 | File | Description |
 |------|-------------|
 | shakesearch.py | Main application: shake detection, screen capture, overlay |
-| drawer.py | Drawer window: image preview, AI chat, web search |
+| drawer.py | Drawer window: image preview, AI chat |
 | requirements.txt | Python dependencies |
 | .env | Your API keys (not tracked by git) |
 | .gitignore | Files excluded from version control |

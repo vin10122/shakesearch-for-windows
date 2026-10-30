@@ -2,11 +2,7 @@ import sys
 import os
 import json
 import io
-import re
 import base64
-import urllib.parse
-import urllib.request
-import webbrowser
 import threading
 from dotenv import load_dotenv
 
@@ -14,35 +10,6 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
-
-
-def search_duckduckgo(query, max_results=3):
-    """
-    Performs a DuckDuckGo web search and extracts text snippets.
-    """
-    if not query or not query.strip():
-        return []
-    try:
-        data = urllib.parse.urlencode({'q': query.strip()}).encode('utf-8')
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Referer': 'https://html.duckduckgo.com/'
-        }
-        req = urllib.request.Request('https://html.duckduckgo.com/html/', data=data, headers=headers)
-        with urllib.request.urlopen(req, timeout=6) as resp:
-            html = resp.read().decode('utf-8', errors='ignore')
-            raw_snippets = re.findall(r'result__snippet[^>]*>(.*?)</a>', html, re.DOTALL)
-            results = []
-            for s in raw_snippets:
-                clean = re.sub(r'<[^<]+?>', '', s).replace('&amp;', '&').replace('&quot;', '"').strip()
-                if clean and clean not in results:
-                    results.append(clean)
-                if len(results) >= max_results:
-                    break
-            return results
-    except Exception as e:
-        print(f"[DuckDuckGo] Search error for '{query}': {e}")
-        return []
 
 
 HTML_TEMPLATE = """<!DOCTYPE html>
@@ -240,13 +207,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     font-size: 12px;
     line-height: 1.4;
     color: var(--text-primary);
-    cursor: pointer;
     transition: all 0.2s;
-  }
-  .chip-card:hover {
-    background: var(--card-hover);
-    border-color: rgba(255, 140, 60, 0.5);
-    transform: translateY(-1px);
   }
 
   .chat-box {
@@ -282,49 +243,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     display: flex;
     flex-direction: column;
     gap: 6px;
-  }
-
-  .ddg-toggle-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 6px;
-    font-size: 11px;
-    color: var(--text-secondary);
-  }
-  .ddg-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    font-weight: 600;
-  }
-  .ddg-checkbox {
-    appearance: none;
-    -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
-    border-radius: 4px;
-    border: 1px solid rgba(255, 140, 60, 0.5);
-    background: rgba(0, 0, 0, 0.2);
-    cursor: pointer;
-    position: relative;
-    outline: none;
-    vertical-align: middle;
-  }
-  .ddg-checkbox:checked {
-    background: var(--primary-orange);
-    border-color: var(--primary-orange);
-  }
-  .ddg-checkbox:checked::after {
-    content: "✓";
-    font-size: 10px;
-    color: #1a0f05;
-    font-weight: 900;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
   }
 
   .search-pill {
@@ -395,9 +313,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <button class="btn-action" onclick="pywebview.api.copy_image()">
         📋 Copy
       </button>
-      <button class="btn-action" onclick="pywebview.api.search_web()">
-        🔍 Search web
-      </button>
       <button class="btn-action" onclick="toggleFs()">
         <span id="fsActionLabel">⛶ Fullscreen</span>
       </button>
@@ -409,13 +324,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   </div>
 
   <div class="footer">
-    <div class="ddg-toggle-bar">
-      <label class="ddg-label">
-        <input type="checkbox" id="ddgToggle" class="ddg-checkbox">
-        🌐 Enrich with web search (DuckDuckGo)
-      </label>
-      <span id="ddgIndicator" style="display:none; color: var(--primary-orange); font-size:10px;">Web search active</span>
-    </div>
     <div class="search-pill">
       <input type="text" id="queryInput" class="search-input" placeholder="Ask anything or circle..." onkeydown="if(event.key==='Enter') sendPrompt()">
       <button class="btn-send" onclick="sendPrompt()">➔</button>
@@ -449,22 +357,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     if (!text) return;
     input.value = '';
 
-    const useWeb = document.getElementById('ddgToggle').checked;
-
     const chatBox = document.getElementById('chatBox');
     const uMsg = document.createElement('div');
     uMsg.className = 'chat-msg-user';
-    uMsg.innerText = (useWeb ? '🌐 ' : '') + text;
+    uMsg.innerText = text;
     chatBox.appendChild(uMsg);
 
     const aMsg = document.createElement('div');
     aMsg.className = 'chat-msg-ai';
     aMsg.id = 'ai-resp-current';
-    aMsg.innerText = useWeb ? 'Web search in progress...' : '...';
+    aMsg.innerText = '...';
     chatBox.appendChild(aMsg);
 
     chatBox.scrollTop = chatBox.scrollHeight;
-    pywebview.api.send_chat(text, useWeb);
+    pywebview.api.send_chat(text);
   }
 
   function updateAiResponse(text) {
@@ -488,7 +394,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       const d = document.createElement('div');
       d.className = 'chip-card';
       d.innerText = txt;
-      d.onclick = () => pywebview.api.search_query(txt);
       c.appendChild(d);
     });
   }
@@ -547,43 +452,15 @@ class DrawerApi:
         except Exception:
             pass
 
-    def search_web(self):
-        webbrowser.open("https://duckduckgo.com/")
+    def send_chat(self, text):
+        threading.Thread(target=self._ask_ai, args=(text,), daemon=True).start()
 
-    def search_query(self, query):
-        url = f"https://duckduckgo.com/?q={urllib.parse.quote(query)}"
-        webbrowser.open(url)
-
-    def send_chat(self, text, use_web=False):
-        threading.Thread(target=self._ask_ai, args=(text, use_web), daemon=True).start()
-
-    def _ask_ai(self, text, use_web):
+    def _ask_ai(self, text):
         global GLOBAL_WINDOW
         if not self.client or not GLOBAL_WINDOW:
             return
 
-        web_context_str = ""
-        # 1. Se DuckDuckGo è attivo, cerca informazioni contestuali
-        if use_web:
-            # Crea query ottimizzata basata sulla domanda o sull'immagine/cronologia
-            search_query_term = text
-            if self.conversation_history:
-                last_turn = self.conversation_history[-1].get("text", "")
-                if len(text.split()) < 4 and last_turn:
-                    search_query_term = f"{last_turn} {text}"
-
-            snippets = search_duckduckgo(search_query_term, max_results=3)
-            if snippets:
-                web_context_str = "\n[Risultati Ricerca Web DuckDuckGo]:\n" + "\n".join(f"- {s}" for s in snippets)
-
-        # 2. Struttura del messaggio
-        # Per il primo prompt allega l'immagine alla domanda assieme alla domanda in sé
-        content_payload = []
-        user_text = text
-        if web_context_str:
-            user_text += f"\n\nRielabora tenendo conto di questi risultati web aggiornati:\n{web_context_str}"
-
-        content_payload.append({"type": "text", "text": user_text})
+        content_payload = [{"type": "text", "text": text}]
 
         if self.is_first_prompt and os.path.exists(self.image_path):
             with open(self.image_path, "rb") as f:
