@@ -8,6 +8,9 @@ import io
 import subprocess
 import ctypes
 import warnings
+import logging
+import tempfile
+from logging.handlers import RotatingFileHandler
 
 # Sopprime warning di deprecazione interni delle librerie (es. httpx URL.raw)
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -17,6 +20,7 @@ from pynput import mouse, keyboard
 from mss import MSS
 from PIL import Image, ImageEnhance, ImageTk, ImageDraw, ImageFilter
 import tkinter as tk
+from tkinter import messagebox
 
 # DPI awareness su Windows
 try:
@@ -35,6 +39,16 @@ SHAKE_MIN_REVERSALS = 4
 SHAKE_DEBOUNCE = 0.8
 
 COLOR_AMBER = "#ff944d"
+logger = logging.getLogger("shakesearch")
+
+
+def configure_logging():
+    log_path = os.path.join(tempfile.gettempdir(), "shakesearch.log")
+    handler = RotatingFileHandler(log_path, maxBytes=1_000_000, backupCount=1,
+                                  encoding="utf-8")
+    logging.basicConfig(level=logging.INFO, handlers=[handler],
+                        format="%(asctime)s %(levelname)s %(message)s")
+    logger.info("Starting ShakeSearch; log: %s", log_path)
 
 
 def get_current_mouse_pos():
@@ -71,10 +85,13 @@ class ShakeSearch:
         self.last_shake = 0
         self.root = tk.Tk()
         self.root.withdraw()
+        self.root.report_callback_exception = self.report_ui_error
 
         self.mouse_listener = None
         self.hotkey_listener = None
         self.multi_overlay = None
+        self.capture_requested = threading.Event()
+        self.root.after(30, self.process_capture_requests)
 
     def detect_shake(self, x, y):
         now = time.time()
@@ -119,22 +136,50 @@ class ShakeSearch:
         if self.multi_overlay:
             return
         if self.detect_shake(x, y):
-            self.root.after(0, self.trigger_capture)
+            self.capture_requested.set()
 
     def on_hotkey_triggered(self):
         print("[ShakeSearch] Alt+F7 hotkey pressed!")
-        self.root.after(0, self.trigger_capture)
+        logger.info("Alt+F7 received")
+        self.capture_requested.set()
+
+    def report_ui_error(self, error_type, error, traceback):
+        logger.error("UI callback failed", exc_info=(error_type, error, traceback))
+        messagebox.showerror(
+            "ShakeSearch",
+            "An interface error occurred. Details are in "
+            + os.path.join(tempfile.gettempdir(), "shakesearch.log"),
+            parent=self.root,
+        )
+
+    def process_capture_requests(self):
+        # Listener callbacks run outside Tk's thread; only the UI thread uses Tk.
+        if self.capture_requested.is_set():
+            self.capture_requested.clear()
+            self.trigger_capture()
+        self.root.after(30, self.process_capture_requests)
 
     def trigger_capture(self):
         if self.multi_overlay:
             return
 
-        screen_data = self.capture_all_screens()
-        self.multi_overlay = MultiScreenOverlayManager(
-            self.root,
-            screen_data,
-            self.on_session_finished
-        )
+        try:
+            logger.info("Capture requested")
+            screen_data = self.capture_all_screens()
+            if not screen_data:
+                raise RuntimeError("No monitors available for screen capture")
+            self.multi_overlay = MultiScreenOverlayManager(
+                self.root, screen_data, self.on_session_finished
+            )
+            logger.info("Opened overlays on %d monitor(s)", len(screen_data))
+        except Exception:
+            logger.exception("Unable to open capture overlay")
+            messagebox.showerror(
+                "ShakeSearch",
+                "Unable to open screen capture. Details are in "
+                + os.path.join(tempfile.gettempdir(), "shakesearch.log"),
+                parent=self.root,
+            )
 
     def capture_all_screens(self):
         results = []
@@ -164,6 +209,7 @@ class ShakeSearch:
         self.hotkey_listener.start()
 
         print("[ShakeSearch] Active! Press Alt + F7 or shake the mouse.")
+        logger.info("Mouse and Alt+F7 listeners started")
         self.root.mainloop()
 
 
@@ -185,9 +231,13 @@ class MultiScreenOverlayManager:
 
         self.work_area = get_monitor_work_area(cur_x, cur_y)
 
-        for data in screen_data:
-            overlay = AnimatedScreenOverlay(self.root, data, self)
-            self.overlays.append(overlay)
+        try:
+            for data in screen_data:
+                overlay = AnimatedScreenOverlay(self.root, data, self)
+                self.overlays.append(overlay)
+        except Exception:
+            self.close_overlays()
+            raise
 
     def on_confirm_crop(self, cropped_img):
         """Chiamato solo dopo la conferma con INVIO."""
@@ -284,8 +334,16 @@ class AnimatedScreenOverlay:
         self.win.bind("<Escape>", self.on_key_escape)
 
         self.animation_job = None
-        self.animation_started = time.monotonic()
-        self.animate_plasma()
+        self.animation_started = None
+        self.win.bind("<Map>", self.start_plasma, add="+")
+
+    def start_plasma(self, event):
+        if event.widget is self.win and self.animation_started is None:
+            # Start only once visible, not while other monitors are being prepared.
+            self.animation_started = time.monotonic()
+            self.animation_job = self.win.after(0, self.animate_plasma)
+            if self.rect == self.manager.target_screen["rect"]:
+                self.win.focus_force()
 
     def prepare_visuals(self):
         margin = 16
@@ -504,4 +562,9 @@ class AnimatedScreenOverlay:
 
 
 if __name__ == "__main__":
-    ShakeSearch().run()
+    configure_logging()
+    try:
+        ShakeSearch().run()
+    except Exception:
+        logger.exception("ShakeSearch stopped during startup or execution")
+        raise
