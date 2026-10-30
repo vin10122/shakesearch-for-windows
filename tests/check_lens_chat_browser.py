@@ -71,11 +71,13 @@ with sync_playwright() as runner:
         chat.set_content(drawer.HTML_TEMPLATE)
         chat.evaluate('''async results => {
           let index = 0;
-          window.pywebview = {api: {send_to_lens: async () => {
-            const result = results[index++];
-            await new Promise(resolve => setTimeout(resolve, index === 1 ? 30 : 0));
-            return {ok: true, ...result};
-          }}};
+          window.pywebview = {api: {
+            send_to_lens: async () => ({ok: true, job_id: String(index++)}),
+            poll_lens: async token => {
+              await new Promise(resolve => setTimeout(resolve, token === '0' ? 30 : 0));
+              return {done: true, status: 'Read', result: {ok: true, ...results[Number(token)]}};
+            }
+          }};
           await Promise.all([askLens('prima domanda'), askLens('seconda domanda')]);
         }''', [first, second])
         replies = chat.locator('.chat-msg-ai')

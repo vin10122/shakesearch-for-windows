@@ -82,6 +82,8 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
 | lens_upload.py | Direct Python multipart upload and Lens response validation |
 | lens_handoff.py | Standalone browser-handoff helper |
 | lens_session.py | Isolated internal Lens session and reading of visible results |
+| lens_process.py | Nonblocking Lens request queue and child-process management |
+| lens_worker.py | Dedicated Lens WebView process and persistent consent profile |
 | browser_window.py | Standalone browser-launch helper |
 | requirements.txt | Python dependencies |
 | .env | Your API keys (not tracked by git) |
@@ -142,6 +144,12 @@ and transcribes its text and source links into the conversation. The upload does
 not use a browser file input or a local upload page.
 It does not open the default browser, minimize the chat or close the panel.
 
+Lens runs in a separate process with one internal window created at startup.
+The chat submits requests and checks their progress without waiting inside its
+interface callbacks, so a stalled Google page cannot freeze the chat's interface.
+Requests stop after five minutes without a response. Closing the chat cancels
+pending requests and stops its Lens process, including an unresponsive reader.
+
 With **Usa Lens per le prossime domande** checked, messages in the main input use
 the same image-search session. Uncheck it to return to Groq's AI explanations.
 Lens replies are the text and links read from Google, not AI-generated guesses.
@@ -164,14 +172,18 @@ not switch back to a separate HTTP cookie jar after consent. Closing the consent
 window cancels the pending request; closing the chat also closes the internal reader.
 
 Google's consent choice is retained in ShakeSearch's dedicated WebView profile
-under `%LOCALAPPDATA%\ShakeSearch\WebViewProfile` on Windows. Cookies are managed
+under `%LOCALAPPDATA%\ShakeSearch\LensProfile` on Windows, separately from the
+chat's `WebViewProfile`. Only one chat can use the Lens profile at a time; another
+chat reports that Lens is already active instead of opening a competing reader.
+Cookies are managed
 by the WebView and are not extracted into Python or copied from your default browser.
 
 This uses Google's web upload endpoint and result pages, not an official Lens API. Page structure,
 image-session lifetime and support for follow-up questions can change. Automated
 checks inspect the real multipart encoding sent by the HTTP client and cover
 rejected uploads, DOM extraction, session reuse and chat rendering with simulated
-Google responses. **The live Google flow still needs verification on
+Google responses, plus cancellation and timeouts with a deliberately stalled
+worker process. **The live Google flow still needs verification on
 Windows**, because Google access is blocked in the cloud development environment.
 
 The upload host is `lens.google.com`, as configured in

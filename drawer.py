@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
 from image_clipboard import copy_image_to_clipboard
-from lens_session import LensSession
+from lens_process import LensProcessClient
 
 load_dotenv()
 
@@ -404,7 +404,16 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   async function askLens(text) {
     const id = createChatTurn(text || 'Cerca questa immagine con Lens', 'lens');
     try {
-      const result = await pywebview.api.send_to_lens(text);
+      const ticket = await pywebview.api.send_to_lens(text);
+      let result = ticket;
+      if (ticket.ok) {
+        while (true) {
+          const state = await pywebview.api.poll_lens(ticket.job_id);
+          document.getElementById('lensStatus').textContent = state.status || '';
+          if (state.done) { result = state.result; break; }
+          await new Promise(resolve => setTimeout(resolve, 250));
+        }
+      }
       const answer = document.getElementById(id);
       if (!result.ok) {
         answer.textContent = result.error;
@@ -550,7 +559,9 @@ class DrawerApi:
         self.is_first_prompt = True
         self.client = None
         self._lens_lock = threading.Lock()
-        self._lens_session = None
+        self._lens_client = None
+        self._lens_jobs = {}
+        self._lens_closed = False
         if GROQ_API_KEY:
             try:
                 from groq import Groq
@@ -588,36 +599,46 @@ class DrawerApi:
     def send_chat(self, text, reply_id=None):
         threading.Thread(target=self._ask_ai, args=(text, reply_id), daemon=True).start()
 
-    def _lens_status(self, text):
-        if GLOBAL_WINDOW:
-            GLOBAL_WINDOW.evaluate_js(
-                'document.getElementById("lensStatus").textContent = ' + json.dumps(text))
-
     def send_to_lens(self, question=''):
         if not self.image_bytes:
             return dict(ok=False, error='Immagine non disponibile. Esegui una nuova cattura.')
         try:
             with self._lens_lock:
-                if self._lens_session is None:
-                    self._lens_session = LensSession(self.image_bytes, status=self._lens_status)
-                session = self._lens_session
-            result = session.query(question)
-            self._lens_status('Risultati Lens letti. Puoi fare un’altra domanda nella chat.')
-            return dict(ok=True, **result)
+                if self._lens_closed:
+                    return dict(ok=False, error='La chat è stata chiusa.')
+                if self._lens_client is None or self._lens_client.failed:
+                    if self._lens_client is not None:
+                        self._lens_client.close()
+                    self._lens_client = LensProcessClient(self.image_bytes)
+                token = self._lens_client.submit(question)
+                self._lens_jobs[token] = self._lens_client
+                for old in list(self._lens_jobs):
+                    if len(self._lens_jobs) <= 64:
+                        break
+                    if self._lens_jobs[old].poll(old)['done']:
+                        del self._lens_jobs[old]
+            return dict(ok=True, job_id=token)
         except Exception as error:
-            logging.getLogger('shakesearch').exception('Unable to read Lens results')
-            try:
-                self._lens_status('Richiesta Lens non completata. Nessun risultato ricevuto.')
-            except Exception:
-                pass  # The user may have closed the chat during the request.
+            logging.getLogger('shakesearch').exception('Unable to queue Lens request')
             return dict(ok=False, error=str(error))
+
+    def poll_lens(self, token):
+        with self._lens_lock:
+            client = self._lens_jobs.get(token)
+        if client is None:
+            return dict(done=True, result=dict(ok=False, error='Richiesta Lens annullata o sconosciuta.'))
+        return client.poll(token)
 
     def _close_lens_session(self):
         with self._lens_lock:
-            session = self._lens_session
-            self._lens_session = None
-        if session is not None:
-            session.close()
+            self._lens_closed = True
+            clients = set(self._lens_jobs.values())
+            if self._lens_client is not None:
+                clients.add(self._lens_client)
+            self._lens_client = None
+            self._lens_jobs.clear()
+        for client in clients:
+            client.close()
 
     def open_image_for_text(self):
         if not self.image_bytes:

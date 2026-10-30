@@ -102,47 +102,52 @@ class DrawerLensTests(unittest.TestCase):
         with patch.object(drawer, 'GROQ_API_KEY', None):
             self.api = drawer.DrawerApi(str(self.path), (0, 0, 560, 680))
 
-    def test_sends_immutable_capture_and_question(self):
+    def test_sends_immutable_capture_and_question_without_waiting_for_lens(self):
         self.path.write_bytes(b'new capture')
-        with patch.object(drawer, 'LensSession') as factory:
-            factory.return_value.query.return_value = dict(text='Real Lens text', links=[])
+        with patch.object(drawer, 'LensProcessClient') as factory:
+            factory.return_value.failed = False
+            factory.return_value.submit.return_value = 'job'
             result = self.api.send_to_lens('Che oggetto è?')
-        self.assertTrue(result['ok'])
-        self.assertEqual(result['text'], 'Real Lens text')
+        self.assertEqual(result, dict(ok=True, job_id='job'))
         self.assertEqual(factory.call_args.args[0], image_bytes())
-        factory.return_value.query.assert_called_once_with('Che oggetto è?')
+        factory.return_value.submit.assert_called_once_with('Che oggetto è?')
 
-    def test_missing_capture_does_not_create_lens_session(self):
+    def test_missing_capture_does_not_start_worker(self):
         self.api.image_bytes = None
-        with patch.object(drawer, 'LensSession') as factory:
+        with patch.object(drawer, 'LensProcessClient') as factory:
             self.assertFalse(self.api.send_to_lens()['ok'])
         factory.assert_not_called()
 
-    def test_followups_reuse_session_and_never_close_main_chat(self):
+    def test_followups_reuse_worker_without_reentering_main_webview(self):
         window = Mock(on_top=True)
-        with patch.object(drawer, 'GLOBAL_WINDOW', window), patch.object(drawer, 'LensSession') as factory:
-            factory.return_value.query.return_value = dict(text='Lens result', links=[])
+        with patch.object(drawer, 'GLOBAL_WINDOW', window), patch.object(drawer, 'LensProcessClient') as factory:
+            factory.return_value.failed = False
+            factory.return_value.submit.side_effect = ['one', 'two']
             self.assertTrue(self.api.send_to_lens('Che cos’è?')['ok'])
             self.assertTrue(self.api.send_to_lens('E il prezzo?')['ok'])
         factory.assert_called_once()
-        self.assertEqual(factory.return_value.query.call_count, 2)
+        self.assertEqual(factory.return_value.submit.call_count, 2)
         window.minimize.assert_not_called()
         window.destroy.assert_not_called()
+        window.evaluate_js.assert_not_called()
 
-    def test_failed_lens_query_is_not_replaced_with_an_ai_guess(self):
+    def test_failed_lens_result_is_not_replaced_with_an_ai_guess(self):
         self.api.client = Mock()
-        with patch.object(drawer, 'LensSession') as factory, self.assertLogs('shakesearch', level='ERROR'):
-            factory.return_value.query.side_effect = RuntimeError('Lens non leggibile')
-            result = self.api.send_to_lens('Quale prodotto?')
+        with patch.object(drawer, 'LensProcessClient') as factory:
+            factory.return_value.failed = False
+            factory.return_value.submit.return_value = 'one'
+            factory.return_value.poll.return_value = dict(done=True, result=dict(ok=False, error='Lens non leggibile'))
+            self.api.send_to_lens('Quale prodotto?')
+            result = self.api.poll_lens('one')['result']
         self.assertFalse(result['ok'])
         self.assertEqual(result['error'], 'Lens non leggibile')
         self.api.client.chat.completions.create.assert_not_called()
 
-    def test_closing_drawer_also_closes_internal_session(self):
+    def test_closing_drawer_stops_owned_worker(self):
         window = Mock()
-        session = Mock()
-        self.api._lens_session = session
+        client = Mock()
+        self.api._lens_client = client
         with patch.object(drawer, 'GLOBAL_WINDOW', window):
             self.api.close_window()
-        session.close.assert_called_once()
+        client.close.assert_called_once()
         window.destroy.assert_called_once()
