@@ -1,494 +1,433 @@
 import os
+import sys
 import time
 import math
 import threading
 import base64
 import io
+import subprocess
+import ctypes
+import warnings
+
+# Sopprime warning di deprecazione interni delle librerie (es. httpx URL.raw)
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 from dotenv import load_dotenv
-from pynput import mouse
-from mss import mss
-from PIL import Image, ImageDraw, ImageTk
+from pynput import mouse, keyboard
+from mss import MSS
+from PIL import Image, ImageEnhance, ImageTk, ImageDraw
 import tkinter as tk
+
+# DPI awareness su Windows
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
 
 load_dotenv()
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
-
-SHAKE_THRESHOLD = 150
-SHAKE_TIME_WINDOW = 0.8
-SHAKE_MIN_DIRECTION_CHANGES = 5
+SHAKE_DISTANCE_THRESHOLD = 300
+SHAKE_TIME_WINDOW = 0.55
+SHAKE_MIN_REVERSALS = 4
 SHAKE_DEBOUNCE = 0.8
 
-SELECTION_MIN_RADIUS = 60
-SELECTION_MAX_RADIUS = 500
+COLOR_AMBER = "#ff944d"
+
+
+def get_current_mouse_pos():
+    pt = (ctypes.c_long * 2)()
+    ctypes.windll.user32.GetCursorPos(pt)
+    return pt[0], pt[1]
+
+
+def get_monitor_work_area(x, y):
+    class POINT(ctypes.Structure):
+        _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", ctypes.c_ulong),
+            ("rcMonitor", ctypes.c_long * 4),
+            ("rcWork", ctypes.c_long * 4),
+            ("dwFlags", ctypes.c_ulong)
+        ]
+
+    pt = POINT(x, y)
+    h_mon = ctypes.windll.user32.MonitorFromPoint(pt, 2)
+    mi = MONITORINFO()
+    mi.cbSize = ctypes.sizeof(MONITORINFO)
+    if ctypes.windll.user32.GetMonitorInfoW(h_mon, ctypes.byref(mi)):
+        w = mi.rcWork
+        return (w[0], w[1], w[2], w[3])
+    return None
 
 
 class MagicPointer:
     def __init__(self):
-        self.client = None
-        if GROQ_API_KEY:
-            from groq import Groq
-            self.client = Groq(api_key=GROQ_API_KEY)
-
         self.positions = []
         self.last_shake = 0
         self.root = tk.Tk()
         self.root.withdraw()
-        self.listener = None
-        self.selector = None
-        self.chat = None
+
+        self.mouse_listener = None
+        self.hotkey_listener = None
+        self.multi_overlay = None
 
     def detect_shake(self, x, y):
         now = time.time()
         self.positions.append((x, y, now))
         cutoff = now - SHAKE_TIME_WINDOW
-        self.positions = [
-            (px, py, pt) for px, py, pt in self.positions if pt > cutoff
-        ]
+        self.positions = [(px, py, pt) for px, py, pt in self.positions if pt > cutoff]
 
-        if len(self.positions) < SHAKE_MIN_DIRECTION_CHANGES + 2:
+        if len(self.positions) < 6:
             return False
 
-        total_distance = 0.0
+        total_distance = sum(
+            math.hypot(self.positions[i][0] - self.positions[i - 1][0],
+                       self.positions[i][1] - self.positions[i - 1][1])
+            for i in range(1, len(self.positions))
+        )
+        if total_distance < SHAKE_DISTANCE_THRESHOLD:
+            return False
+
+        dx_signs = []
+        dy_signs = []
         for i in range(1, len(self.positions)):
-            x1, y1, _ = self.positions[i - 1]
-            x2, y2, _ = self.positions[i]
-            total_distance += abs(x2 - x1) + abs(y2 - y1)
+            dx = self.positions[i][0] - self.positions[i - 1][0]
+            dy = self.positions[i][1] - self.positions[i - 1][1]
+            if abs(dx) > 12:
+                dx_signs.append(1 if dx > 0 else -1)
+            if abs(dy) > 12:
+                dy_signs.append(1 if dy > 0 else -1)
 
-        direction_changes = 0
-        for i in range(2, len(self.positions)):
-            x1, y1, _ = self.positions[i - 2]
-            x2, y2, _ = self.positions[i - 1]
-            x3, y3, _ = self.positions[i]
-            dx1 = x2 - x1
-            dy1 = y2 - y1
-            dx2 = x3 - x2
-            dy2 = y3 - y2
-            cross = dx1 * dy2 - dy1 * dx2
-            if cross != 0:
-                direction_changes += 1
+        x_reversals = sum(1 for i in range(1, len(dx_signs)) if dx_signs[i] != dx_signs[i - 1])
+        y_reversals = sum(1 for i in range(1, len(dy_signs)) if dy_signs[i] != dy_signs[i - 1])
 
-        if direction_changes >= SHAKE_MIN_DIRECTION_CHANGES and total_distance > SHAKE_THRESHOLD:
-            now = time.time()
+        if (x_reversals >= SHAKE_MIN_REVERSALS or y_reversals >= SHAKE_MIN_REVERSALS):
             if now - self.last_shake > SHAKE_DEBOUNCE:
                 self.last_shake = now
                 self.positions = []
-                print("[Magic Pointer] Shake rilevato")
+                print("[Magic Pointer] Shake rilevato!")
                 return True
+
         return False
 
     def on_move(self, x, y):
-        if self.selector or self.chat:
+        if self.multi_overlay:
             return
         if self.detect_shake(x, y):
-            self.root.after(0, self.start_selector)
+            self.root.after(0, self.trigger_capture)
 
-    def start_selector(self):
-        self.selector = CircleSelector(self.root, self.on_selection_done)
+    def on_hotkey_triggered(self):
+        print("[Magic Pointer] Scorciatoia Alt+F7 premuta!")
+        self.root.after(0, self.trigger_capture)
 
-    def on_selection_done(self, center, radius):
-        self.selector = None
-        if not center or not radius:
+    def trigger_capture(self):
+        if self.multi_overlay:
             return
-        img = self.capture_circle(center, radius)
-        self.open_chat(img)
 
-    def capture_circle(self, center, radius):
-        with mss() as sct:
-            mon = sct.monitors[1]
-            left = max(0, int(center[0] - radius))
-            top = max(0, int(center[1] - radius))
-            right = min(mon["width"], int(center[0] + radius))
-            bottom = min(mon["height"], int(center[1] + radius))
-            width = right - left
-            height = bottom - top
-            shot = sct.grab({"left": left, "top": top, "width": width, "height": height})
-            img = Image.frombytes("RGB", shot.size, shot.rgb)
+        screen_data = self.capture_all_screens()
+        self.multi_overlay = MultiScreenOverlayManager(
+            self.root,
+            screen_data,
+            self.on_session_finished
+        )
 
-        mask = Image.new("L", img.size, 0)
-        draw = ImageDraw.Draw(mask)
-        cx = center[0] - left
-        cy = center[1] - top
-        r = min(radius, width // 2, height // 2)
-        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=255)
+    def capture_all_screens(self):
+        results = []
+        with MSS() as sct:
+            for i, mon in enumerate(sct.monitors[1:], start=1):
+                shot = sct.grab(mon)
+                img = Image.frombytes("RGB", shot.size, shot.rgb)
+                results.append({
+                    "id": i,
+                    "rect": (mon["left"], mon["top"], mon["width"], mon["height"]),
+                    "image": img
+                })
+        return results
 
-        output = Image.new("RGB", img.size, (20, 20, 20))
-        output.paste(img, mask=mask)
-        return output
-
-    def open_chat(self, img):
-        self.chat = ChatWindow(self.root, img, self.client, GROQ_MODEL, self.close_chat)
-
-    def close_chat(self):
-        self.chat = None
+    def on_session_finished(self):
+        self.multi_overlay = None
 
     def run(self):
-        self.listener = mouse.Listener(on_move=self.on_move)
-        self.listener.daemon = True
-        self.listener.start()
-        print("[Magic Pointer] In ascolto. Scuoti il mouse per attivare.")
+        self.mouse_listener = mouse.Listener(on_move=self.on_move)
+        self.mouse_listener.daemon = True
+        self.mouse_listener.start()
+
+        self.hotkey_listener = keyboard.GlobalHotKeys({
+            '<alt>+<f7>': self.on_hotkey_triggered
+        })
+        self.hotkey_listener.daemon = True
+        self.hotkey_listener.start()
+
+        print("[Magic Pointer] Attivo! Premi Alt + F7 o scuoti il mouse.")
         self.root.mainloop()
 
 
-class CircleSelector:
-    def __init__(self, root, callback):
+class MultiScreenOverlayManager:
+    def __init__(self, root, screen_data, on_finish):
         self.root = root
-        self.callback = callback
-        self.win = tk.Toplevel(root)
-        self.win.attributes("-fullscreen", True)
-        self.win.attributes("-topmost", True)
-        self.win.attributes("-alpha", 0.35)
-        self.win.configure(bg="black")
+        self.screen_data = screen_data
+        self.on_finish = on_finish
+        self.overlays = []
+        self.selection_done = False
 
-        self.canvas = tk.Canvas(self.win, bg="black", highlightthickness=0, cursor="crosshair")
+        cur_x, cur_y = get_current_mouse_pos()
+        self.target_screen = screen_data[0]
+        for s in screen_data:
+            sl, st, sw, sh = s["rect"]
+            if sl <= cur_x < sl + sw and st <= cur_y < st + sh:
+                self.target_screen = s
+                break
+
+        self.work_area = get_monitor_work_area(cur_x, cur_y)
+
+        for data in screen_data:
+            overlay = AnimatedScreenOverlay(self.root, data, self)
+            self.overlays.append(overlay)
+
+    def on_confirm_crop(self, cropped_img):
+        """Chiamato solo dopo la conferma con INVIO."""
+        if self.selection_done:
+            return
+        self.selection_done = True
+        self.close_overlays()
+
+        # Salva l'immagine ritagliata confermata
+        temp_img_path = os.path.join(os.environ.get("TEMP", "."), "cts_selection.png")
+        cropped_img.save(temp_img_path, format="PNG")
+
+        s_left, s_top, s_width, s_height = self.target_screen["rect"]
+        if self.work_area:
+            w_left, w_top, w_right, w_bottom = self.work_area
+            bottom_limit = w_bottom
+        else:
+            bottom_limit = s_top + s_height - 48
+
+        target_w = min(560, s_width - 80)
+        center_x = s_left + (s_width - target_w) // 2
+        expanded_h = min(680, int((bottom_limit - s_top) * 0.82))
+        pos_y = bottom_limit - expanded_h - 14
+
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "drawer_webview.py")
+        cmd = [
+            sys.executable,
+            script_path,
+            temp_img_path,
+            str(center_x),
+            str(pos_y),
+            str(target_w),
+            str(expanded_h)
+        ]
+        subprocess.Popen(cmd)
+        self.on_finish()
+
+    def cancel(self):
+        self.close_all()
+
+    def close_overlays(self):
+        for o in self.overlays:
+            try:
+                o.destroy()
+            except Exception:
+                pass
+        self.overlays.clear()
+
+    def close_all(self):
+        self.close_overlays()
+        self.on_finish()
+
+
+class AnimatedScreenOverlay:
+    """
+    Overlay di cattura:
+    - Sfondo con trasparenza scura colorata di arancione tenue
+    - Mostra il rettangolo di selezione al rilascio del cerchiamento
+    - Modalità conferma: Invio per procedere, Esc per cancellare o riprovare
+    """
+    def __init__(self, root, screen_dict, manager):
+        self.root = root
+        self.manager = manager
+        self.screen_img = screen_dict["image"]
+        self.rect = screen_dict["rect"]
+        left, top, width, height = self.rect
+
+        self.win = tk.Toplevel(root)
+        self.win.overrideredirect(True)
+        self.win.geometry(f"{width}x{height}+{left}+{top}")
+        self.win.attributes("-topmost", True)
+        self.win.configure(bg="#000000", cursor="crosshair")
+
+        self.width = width
+        self.height = height
+
+        self.canvas = tk.Canvas(self.win, highlightthickness=0, bg="#000000", cursor="crosshair")
         self.canvas.pack(fill="both", expand=True)
 
-        self.center = None
-        self.radius = 0
-        self.anim_phase = 0
-        self.done = False
+        self.prepare_visuals()
 
-        self.canvas.bind("<Motion>", self.on_motion)
+        self.points = []
+        self.is_drawing = False
+        self.pending_crop = None
+        self.pending_bbox = None
+
         self.canvas.bind("<ButtonPress-1>", self.on_press)
         self.canvas.bind("<B1-Motion>", self.on_drag)
         self.canvas.bind("<ButtonRelease-1>", self.on_release)
-        self.canvas.bind("<Escape>", lambda e: self.cancel())
 
-        self.animate()
+        # Tasti di conferma e annullamento
+        self.win.bind("<Return>", self.on_key_enter)
+        self.win.bind("<KP_Enter>", self.on_key_enter)
+        self.win.bind("<Escape>", self.on_key_escape)
 
-    def on_motion(self, e):
-        if self.done or self.center is None:
-            return
-        self.center = (e.x, e.y)
+    def prepare_visuals(self):
+        margin = 16
+        target_w = max(100, self.width - (margin * 2))
+        target_h = max(100, self.height - (margin * 2))
+
+        # Tonalità con trasparenza calda arancione tenue (nessun gradiente aggressivo)
+        shrunk = self.screen_img.resize((target_w, target_h), Image.Resampling.BILINEAR)
+        dimmed = ImageEnhance.Brightness(shrunk).enhance(0.70)
+
+        # Sovrapposizione velatura arancione tenue
+        tint = Image.new("RGBA", (target_w, target_h), (255, 140, 50, 26))
+        dimmed_rgba = dimmed.convert("RGBA")
+        blended = Image.alpha_composite(dimmed_rgba, tint).convert("RGB")
+        self.bg_photo = ImageTk.PhotoImage(blended)
+
+        self.canvas.create_image(margin, margin, image=self.bg_photo, anchor="nw")
+
+        # Bordo perimetrale pulito arancione
+        self.canvas.create_rectangle(
+            margin - 1, margin - 1,
+            self.width - margin + 1, self.height - margin + 1,
+            outline=COLOR_AMBER, width=2
+        )
+
+        self.header_text = self.canvas.create_text(
+            self.width // 2,
+            38,
+            text="✨ Cerchia qualsiasi cosa  •  Esc per uscire",
+            fill="#ffffff",
+            font=("Segoe UI", 12, "bold")
+        )
 
     def on_press(self, e):
-        self.center = (e.x, e.y)
-        self.radius = SELECTION_MIN_RADIUS
+        # Se era già presente una selezione da confermare, un nuovo click la cancella per rifarla
+        if self.pending_crop:
+            self.clear_selection_preview()
+
+        margin = 16
+        if margin <= e.x <= self.width - margin and margin <= e.y <= self.height - margin:
+            self.is_drawing = True
+            self.points = [(e.x, e.y)]
+            self.canvas.delete("trail")
+            self.canvas.delete("glow")
 
     def on_drag(self, e):
-        if not self.center:
+        if not self.is_drawing:
             return
-        dx = e.x - self.center[0]
-        dy = e.y - self.center[1]
-        self.radius = max(SELECTION_MIN_RADIUS, min(SELECTION_MAX_RADIUS, int(math.hypot(dx, dy))))
+        prev_x, prev_y = self.points[-1]
+        dist = math.hypot(e.x - prev_x, e.y - prev_y)
+        if dist > 3:
+            self.points.append((e.x, e.y))
+            # Tracciamento pulito arancione
+            self.canvas.create_line(
+                prev_x, prev_y, e.x, e.y,
+                fill=COLOR_AMBER, width=6, capstyle="round", smooth=True, tags="glow"
+            )
+            self.canvas.create_line(
+                prev_x, prev_y, e.x, e.y,
+                fill="#ffffff", width=2, capstyle="round", smooth=True, tags="trail"
+            )
 
     def on_release(self, e):
-        if self.center and self.radius >= SELECTION_MIN_RADIUS:
-            self.done = True
-            self.win.destroy()
-            self.callback(self.center, self.radius)
+        if not self.is_drawing or len(self.points) < 5:
+            self.is_drawing = False
+            return
+
+        self.is_drawing = False
+        margin = 16
+
+        # Calcola le coordinate min/max disegnate
+        xs = [p[0] for p in self.points]
+        ys = [p[1] for p in self.points]
+
+        disp_min_x, disp_max_x = max(margin, min(xs)), min(self.width - margin, max(xs))
+        disp_min_y, disp_max_y = max(margin, min(ys)), min(self.height - margin, max(ys))
+
+        if (disp_max_x - disp_min_x) < 25 or (disp_max_y - disp_min_y) < 25:
+            self.canvas.delete("trail")
+            self.canvas.delete("glow")
+            return
+
+        # Coordinate mappate all'immagine originale ad alta risoluzione
+        scale_x = self.screen_img.width / float(self.width - (margin * 2))
+        scale_y = self.screen_img.height / float(self.height - (margin * 2))
+
+        orig_min_x = max(0, (disp_min_x - margin) * scale_x)
+        orig_max_x = min(self.screen_img.width, (disp_max_x - margin) * scale_x)
+        orig_min_y = max(0, (disp_min_y - margin) * scale_y)
+        orig_max_y = min(self.screen_img.height, (disp_max_y - margin) * scale_y)
+
+        cropped = self.screen_img.crop((int(orig_min_x), int(orig_min_y), int(orig_max_x), int(orig_max_y)))
+        self.pending_crop = cropped
+        self.pending_bbox = (disp_min_x, disp_min_y, disp_max_x, disp_max_y)
+
+        # Mostra rettangolo di selezione in evidenza con badge di conferma
+        self.show_selection_preview(disp_min_x, disp_min_y, disp_max_x, disp_max_y)
+
+    def show_selection_preview(self, x1, y1, x2, y2):
+        self.canvas.delete("selection_box")
+
+        # Bordo rettangolare tratteggiato in evidenza
+        self.canvas.create_rectangle(
+            x1, y1, x2, y2,
+            outline=COLOR_AMBER, width=3, dash=(6, 4), tags="selection_box"
+        )
+        self.canvas.create_rectangle(
+            x1 - 1, y1 - 1, x2 + 1, y2 + 1,
+            outline="#ffffff", width=1, tags="selection_box"
+        )
+
+        # Badge con istruzioni sotto o sopra il rettangolo
+        badge_y = y2 + 26 if y2 + 50 < self.height else y1 - 26
+        badge_x = (x1 + x2) // 2
+
+        self.canvas.create_rectangle(
+            badge_x - 170, badge_y - 16, badge_x + 170, badge_y + 16,
+            fill="#1f1814", outline=COLOR_AMBER, width=2, tags="selection_box"
+        )
+        self.canvas.create_text(
+            badge_x, badge_y,
+            text="Premi INVIO per confermare  •  ESC per riprovare",
+            fill="#ffffff", font=("Segoe UI", 10, "bold"), tags="selection_box"
+        )
+
+    def clear_selection_preview(self):
+        self.pending_crop = None
+        self.pending_bbox = None
+        self.canvas.delete("selection_box")
+        self.canvas.delete("trail")
+        self.canvas.delete("glow")
+
+    def on_key_enter(self, event=None):
+        if self.pending_crop:
+            self.manager.on_confirm_crop(self.pending_crop)
+
+    def on_key_escape(self, event=None):
+        # Se c'è una selezione attiva, il primo ESC la resetta per farti riprovare
+        if self.pending_crop:
+            self.clear_selection_preview()
         else:
-            self.cancel()
+            self.manager.cancel()
 
-    def cancel(self):
-        self.done = True
-        self.win.destroy()
-        self.callback(None, None)
-
-    def animate(self):
-        if self.done or not self.win.winfo_exists():
-            return
-        self.anim_phase += 0.15
-        self.canvas.delete("all")
-        if self.center:
-            r = self.radius
-            pulse = r + 14 + 12 * math.sin(self.anim_phase * 5)
-            self.canvas.create_oval(
-                self.center[0] - pulse, self.center[1] - pulse,
-                self.center[0] + pulse, self.center[1] + pulse,
-                outline="#00ff88", width=2
-            )
-            self.canvas.create_oval(
-                self.center[0] - r, self.center[1] - r,
-                self.center[0] + r, self.center[1] + r,
-                outline="#ffffff", width=3
-            )
-            self.canvas.create_oval(
-                self.center[0] - 6, self.center[1] - 6,
-                self.center[0] + 6, self.center[1] + 6,
-                fill="#00ff88", outline="#ffffff", width=1
-            )
-            self.canvas.create_text(
-                self.center[0], self.center[1] - r - 32,
-                text="Trascina per selezionare  •  Esc per annulla",
-                fill="#ffffff", font=("Segoe UI", 12, "bold")
-            )
-        self.win.after(30, self.animate)
-
-
-class ChatWindow:
-    def __init__(self, root, img, client, model, on_close):
-        self.root = root
-        self.img = img
-        self.client = client
-        self.model = model
-        self.on_close = on_close
-        self.win = tk.Toplevel(root)
-        self.win.title("Magic Pointer")
-        self.win.geometry("480x640")
-        self.win.configure(bg="#0a0a0a")
-        self.win.attributes("-topmost", True)
-        self.win.attributes("-alpha", 0.0)
-
-        self.build_ui()
-        self.fade_in()
-
-        threading.Thread(target=self.fetch_suggestions, daemon=True).start()
-
-    def show_preview(self):
-        img = self.img.copy()
-        img.thumbnail((450, 300), Image.Resampling.LANCZOS)
-        photo = ImageTk.PhotoImage(img)
-        self.preview_label.configure(image=photo)
-        self.preview_label.image = photo
-
-    def _on_mousewheel(self, event):
-        self.scroll.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-    def build_ui(self):
-        self.header = tk.Frame(self.win, bg="#121212", height=56)
-        self.header.pack(fill="x")
-        self.header.pack_propagate(False)
-
-        tk.Label(
-            self.header, text="Magic Pointer",
-            bg="#121212", fg="#00ff88",
-            font=("Segoe UI", 13, "bold")
-        ).pack(side="left", padx=18, pady=15)
-
-        tk.Button(
-            self.header, text="✕", bg="#121212", fg="#ffffff",
-            bd=0, font=("Segoe UI", 13), command=self.close,
-            cursor="hand2"
-        ).pack(side="right", padx=16)
-
-        self.scroll = tk.Canvas(self.win, bg="#0a0a0a", highlightthickness=0)
-        self.scroll.pack(fill="both", expand=True, padx=16, pady=14)
-        self.scroll.bind("<MouseWheel>", self._on_mousewheel)
-
-        self.frame = tk.Frame(self.scroll, bg="#0a0a0a")
-        self.scroll.create_window((0, 0), window=self.frame, anchor="nw")
-        self.frame.bind("<Configure>", lambda e: self.scroll.configure(scrollregion=self.scroll.bbox("all")))
-
-        self.status = tk.Label(
-            self.frame, text="Analisi in corso…",
-            bg="#0a0a0a", fg="#aaaaaa",
-            font=("Segoe UI", 10)
-        )
-        self.status.pack(anchor="w", pady=(12, 6))
-
-        self.preview_frame = tk.Frame(self.frame, bg="#121212", highlightbackground="#333333", highlightthickness=1)
-        self.preview_frame.pack(fill="x", pady=(0, 10))
-
-        self.preview_label = tk.Label(self.preview_frame, bg="#121212")
-        self.preview_label.pack(pady=8)
-
-        self.preview_title = tk.Label(
-            self.preview_frame, text="Selezione",
-            bg="#121212", fg="#666666", font=("Segoe UI", 9)
-        )
-        self.preview_title.pack(pady=(0, 8))
-
-        self.show_preview()
-
-        self.chips_frame = tk.Frame(self.frame, bg="#0a0a0a")
-        self.chips_frame.pack(fill="x")
-
-        self.custom_frame = tk.Frame(self.frame, bg="#0a0a0a")
-        self.custom_frame.pack(fill="x", pady=(16, 0))
-
-        tk.Button(
-            self.chips_frame,
-            text="Chiudi",
-            bg="#0a0a0a",
-            fg="#666666",
-            bd=0,
-            font=("Segoe UI", 9),
-            cursor="hand2",
-            command=self.close,
-        ).pack(pady=(18, 0))
-
-        self.footer = tk.Frame(self.win, bg="#121212", height=56)
-        self.footer.pack(fill="x", side="bottom")
-        self.footer.pack_propagate(False)
-
-        self.prompt_entry = tk.Entry(
-            self.footer,
-            bg="#1a1a1a",
-            fg="#ffffff",
-            insertbackground="#00ff88",
-            bd=0,
-            highlightbackground="#333333",
-            highlightthickness=1,
-            font=("Segoe UI", 10),
-        )
-        self.prompt_entry.pack(side="left", padx=(16, 8), pady=12, fill="x", expand=True)
-        self.prompt_entry.bind("<Return>", lambda e: self.send_custom_prompt())
-
-        self.send_btn = tk.Button(
-            self.footer,
-            text="Invia",
-            bg="#00ff88",
-            fg="#000000",
-            activebackground="#33ffaa",
-            activeforeground="#000000",
-            bd=0,
-            font=("Segoe UI", 10, "bold"),
-            cursor="hand2",
-            command=self.send_custom_prompt,
-        )
-        self.send_btn.pack(side="right", padx=(0, 16), pady=12)
-
-    def send_custom_prompt(self):
-        text = self.prompt_entry.get().strip()
-        if not text or not self.client:
-            return
-        self.prompt_entry.delete(0, "end")
-        self.send_btn.configure(state="disabled", text="Invio…")
-
-        bubble = tk.Label(
-            self.custom_frame,
-            text=f"Tu: {text}",
-            bg="#1a1a1a",
-            fg="#00ff88",
-            font=("Segoe UI", 9, "bold"),
-            anchor="w",
-            justify="left",
-            wraplength=420,
-        )
-        bubble.pack(fill="x", pady=(4, 2), padx=2)
-
-        resp_label = tk.Label(
-            self.custom_frame,
-            text="…",
-            bg="#121212",
-            fg="#cccccc",
-            font=("Segoe UI", 9),
-            anchor="w",
-            justify="left",
-            wraplength=420,
-        )
-        resp_label.pack(fill="x", pady=(0, 8), padx=2)
-
-        threading.Thread(target=self.ask_custom, args=(text, resp_label), daemon=True).start()
-
-    def ask_custom(self, user_prompt, resp_label):
-        buf = io.BytesIO()
-        self.img.save(buf, format="PNG")
-        b64 = base64.b64encode(buf.getvalue()).decode()
-
-        try:
-            completion = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": user_prompt,
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/png;base64,{b64}"},
-                            },
-                        ],
-                    }
-                ],
-                max_tokens=300,
-                temperature=0.6,
-            )
-            answer = completion.choices[0].message.content.strip()
-            self.root.after(0, lambda: resp_label.configure(text=answer))
-        except Exception as e:
-            self.root.after(0, lambda: resp_label.configure(text=f"Errore Groq: {e}"))
-        finally:
-            self.root.after(0, lambda: self.send_btn.configure(state="normal", text="Invia"))
-
-    def fade_in(self):
-        try:
-            alpha = self.win.attributes("-alpha")
-        except tk.TclError:
-            return
-        if alpha < 1.0:
-            self.win.attributes("-alpha", min(1.0, alpha + 0.07))
-            self.win.after(20, self.fade_in)
-
-    def fetch_suggestions(self):
-        if not self.client:
-            self.root.after(0, lambda: self.show_result(["Inserisci GROQ_API_KEY nel file .env"]))
-            return
-
-        buf = io.BytesIO()
-        self.img.save(buf, format="PNG")
-        b64 = base64.b64encode(buf.getvalue()).decode()
-
-        try:
-            completion = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": "Analizza l'area dello schermo selezionata. Genera fino a 3 suggerimenti brevi (chip) su azioni che l'utente potrebbe voler fare. Rispondi solo con i testi, uno per riga. Nessuna spiegazione, nessun numero, nessun simbolo."
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/png;base64,{b64}"},
-                            },
-                        ],
-                    }
-                ],
-                max_tokens=150,
-                temperature=0.6,
-            )
-            text = completion.choices[0].message.content.strip()
-            suggestions = [s.strip() for s in text.split("\n") if s.strip()][:3]
-            if not suggestions:
-                suggestions = ["Nessun suggerimento rilevato"]
-            self.root.after(0, lambda: self.show_result(suggestions))
-        except Exception as e:
-            self.root.after(0, lambda: self.show_result([f"Errore Groq: {e}"]))
-
-    def show_result(self, suggestions):
-        self.status.destroy()
-        for s in suggestions:
-            chip = tk.Button(
-                self.chips_frame,
-                text=s,
-                bg="#1a1a1a",
-                fg="#ffffff",
-                activebackground="#242424",
-                activeforeground="#ffffff",
-                bd=0,
-                highlightthickness=0,
-                font=("Segoe UI", 10),
-                padx=16,
-                pady=12,
-                cursor="hand2",
-                anchor="w",
-                justify="left",
-                wraplength=400,
-                command=lambda val=s: self.copy_text(val),
-            )
-            chip.pack(fill="x", pady=7, padx=2)
-            chip.bind("<Enter>", lambda e, b=chip: b.configure(bg="#242424"))
-            chip.bind("<Leave>", lambda e, b=chip: b.configure(bg="#1a1a1a"))
-
-    def copy_text(self, text):
-        try:
-            self.win.clipboard_clear()
-            self.win.clipboard_append(text)
-        except Exception:
-            pass
-
-    def close(self):
+    def destroy(self):
         if self.win and self.win.winfo_exists():
             self.win.destroy()
-        self.on_close()
 
 
 if __name__ == "__main__":

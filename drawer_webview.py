@@ -1,0 +1,697 @@
+import sys
+import os
+import json
+import io
+import re
+import base64
+import urllib.parse
+import urllib.request
+import webbrowser
+import threading
+from dotenv import load_dotenv
+
+load_dotenv()
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
+
+
+def search_duckduckgo(query, max_results=3):
+    """
+    Esegue una ricerca web DuckDuckGo estraendo snippet testuali aggiornati.
+    """
+    if not query or not query.strip():
+        return []
+    try:
+        data = urllib.parse.urlencode({'q': query.strip()}).encode('utf-8')
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://html.duckduckgo.com/'
+        }
+        req = urllib.request.Request('https://html.duckduckgo.com/html/', data=data, headers=headers)
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            html = resp.read().decode('utf-8', errors='ignore')
+            raw_snippets = re.findall(r'result__snippet[^>]*>(.*?)</a>', html, re.DOTALL)
+            results = []
+            for s in raw_snippets:
+                clean = re.sub(r'<[^<]+?>', '', s).replace('&amp;', '&').replace('&quot;', '"').strip()
+                if clean and clean not in results:
+                    results.append(clean)
+                if len(results) >= max_results:
+                    break
+            return results
+    except Exception as e:
+        print(f"[DuckDuckGo] Errore ricerca '{query}': {e}")
+        return []
+
+
+HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg-glass: rgba(26, 20, 16, 0.88);
+    --border-glass: rgba(255, 140, 60, 0.38);
+    --primary-orange: #ff944d;
+    --primary-orange-light: #ffb077;
+    --card-surface: rgba(44, 34, 28, 0.78);
+    --card-hover: rgba(60, 46, 38, 0.92);
+    --text-primary: #fdf8f5;
+    --text-secondary: #bfaea5;
+    --font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+  }
+
+  body {
+    background: transparent;
+    font-family: var(--font-family);
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 8px 12px;
+    transition: padding 0.3s ease;
+  }
+
+  body.is-fullscreen {
+    padding: 0;
+  }
+
+  .material-container {
+    background: var(--bg-glass);
+    backdrop-filter: blur(36px);
+    -webkit-backdrop-filter: blur(36px);
+    border: 1px solid var(--border-glass);
+    border-radius: 32px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75),
+                0 0 20px rgba(255, 140, 60, 0.16);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    transition: border-radius 0.3s ease;
+  }
+
+  body.is-fullscreen .material-container {
+    border-radius: 0;
+    border: none;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px 4px 20px;
+    position: relative;
+  }
+
+  .handle-bar {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 4px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.28);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: var(--primary-orange);
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .btn-icon {
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    color: var(--text-secondary);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: all 0.2s;
+  }
+  .btn-icon:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    transform: scale(1.08);
+  }
+
+  .content-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    padding: 4px 18px 8px 18px;
+    gap: 10px;
+  }
+  .content-area::-webkit-scrollbar {
+    width: 5px;
+  }
+  .content-area::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+  }
+
+  .preview-wrapper {
+    background: var(--card-surface);
+    border: 1px solid rgba(255, 140, 60, 0.16);
+    border-radius: 20px;
+    padding: 8px;
+    display: flex;
+    justify-content: center;
+  }
+  .preview-wrapper img {
+    max-height: 180px;
+    max-width: 100%;
+    border-radius: 14px;
+    object-fit: contain;
+  }
+
+  body.is-fullscreen .preview-wrapper img {
+    max-height: 280px;
+  }
+
+  .actions-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .btn-action {
+    background: var(--card-surface);
+    border: 1px solid rgba(255, 140, 60, 0.18);
+    color: var(--text-primary);
+    padding: 7px 13px;
+    border-radius: 18px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+  }
+  .btn-action:hover {
+    background: var(--card-hover);
+    border-color: rgba(255, 140, 60, 0.45);
+  }
+
+  .status-text {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  .chips-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .chip-card {
+    background: var(--card-surface);
+    border: 1px solid rgba(255, 140, 60, 0.14);
+    padding: 10px 14px;
+    border-radius: 18px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .chip-card:hover {
+    background: var(--card-hover);
+    border-color: rgba(255, 140, 60, 0.5);
+    transform: translateY(-1px);
+  }
+
+  .chat-box {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .chat-msg-user {
+    align-self: flex-end;
+    background: var(--primary-orange);
+    color: #1a0f05;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 18px 18px 4px 18px;
+    font-size: 12px;
+    max-width: 85%;
+  }
+  .chat-msg-ai {
+    align-self: flex-start;
+    background: var(--card-surface);
+    border: 1px solid rgba(255, 140, 60, 0.14);
+    color: var(--text-primary);
+    padding: 9px 14px;
+    border-radius: 18px 18px 18px 4px;
+    font-size: 12px;
+    line-height: 1.45;
+    max-width: 90%;
+  }
+
+  /* Barra di ricerca e Spunta DuckDuckGo */
+  .footer {
+    padding: 4px 14px 10px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .ddg-toggle-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+  .ddg-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .ddg-checkbox {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 140, 60, 0.5);
+    background: rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+    position: relative;
+    outline: none;
+    vertical-align: middle;
+  }
+  .ddg-checkbox:checked {
+    background: var(--primary-orange);
+    border-color: var(--primary-orange);
+  }
+  .ddg-checkbox:checked::after {
+    content: "✓";
+    font-size: 10px;
+    color: #1a0f05;
+    font-weight: 900;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  .search-pill {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 140, 60, 0.2);
+    border-radius: 28px;
+    display: flex;
+    align-items: center;
+    padding: 3px 5px 3px 16px;
+  }
+  .search-pill:focus-within {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 140, 60, 0.6);
+    box-shadow: 0 0 14px rgba(255, 140, 60, 0.2);
+  }
+  .search-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #fff;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .search-input::placeholder {
+    color: var(--text-secondary);
+  }
+  .btn-send {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: none;
+    background: var(--primary-orange);
+    color: #1a0f05;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+  .btn-send:hover {
+    transform: scale(1.08);
+  }
+</style>
+</head>
+<body>
+
+<div class="material-container">
+  <div class="handle-bar"></div>
+  <div class="header">
+    <div class="brand">
+      <span>✨</span> Circle to Search
+    </div>
+    <div class="header-actions">
+      <button class="btn-icon" id="btnToggleFs" title="Schermo intero (F11)" onclick="toggleFs()">⛶</button>
+      <button class="btn-icon" title="Chiudi (Esc)" onclick="pywebview.api.close_window()">✕</button>
+    </div>
+  </div>
+
+  <div class="content-area" id="contentArea">
+    <div class="preview-wrapper">
+      <img id="cropPreview" src="" alt="Selezione">
+    </div>
+
+    <div class="actions-row">
+      <button class="btn-action" onclick="pywebview.api.copy_image()">
+        📋 Copia
+      </button>
+      <button class="btn-action" onclick="pywebview.api.search_google()">
+        🔍 Cerca su Google
+      </button>
+      <button class="btn-action" onclick="toggleFs()">
+        <span id="fsActionLabel">⛶ Schermo intero</span>
+      </button>
+    </div>
+
+    <div class="status-text" id="statusText">⏳ Riconoscimento ed analisi in corso...</div>
+    <div class="chips-container" id="chipsContainer"></div>
+    <div class="chat-box" id="chatBox"></div>
+  </div>
+
+  <div class="footer">
+    <div class="ddg-toggle-bar">
+      <label class="ddg-label">
+        <input type="checkbox" id="ddgToggle" class="ddg-checkbox">
+        🌐 Arricchisci con ricerca Web (DuckDuckGo)
+      </label>
+      <span id="ddgIndicator" style="display:none; color: var(--primary-orange); font-size:10px;">Ricerca attiva</span>
+    </div>
+    <div class="search-pill">
+      <input type="text" id="queryInput" class="search-input" placeholder="Chiedi qualsiasi cosa o cerchia..." onkeydown="if(event.key==='Enter') sendPrompt()">
+      <button class="btn-send" onclick="sendPrompt()">➔</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let isFullscreen = false;
+
+  function toggleFs() {
+    isFullscreen = !isFullscreen;
+    document.body.classList.toggle('is-fullscreen', isFullscreen);
+    document.getElementById('btnToggleFs').innerText = isFullscreen ? '🗗' : '⛶';
+    document.getElementById('fsActionLabel').innerText = isFullscreen ? '🗗 Finestra' : '⛶ Schermo intero';
+    pywebview.api.toggle_fullscreen();
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'F11') {
+      e.preventDefault();
+      toggleFs();
+    } else if (e.key === 'Escape') {
+      pywebview.api.close_window();
+    }
+  });
+
+  function sendPrompt() {
+    const input = document.getElementById('queryInput');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+
+    const useWeb = document.getElementById('ddgToggle').checked;
+
+    const chatBox = document.getElementById('chatBox');
+    const uMsg = document.createElement('div');
+    uMsg.className = 'chat-msg-user';
+    uMsg.innerText = (useWeb ? '🌐 ' : '') + text;
+    chatBox.appendChild(uMsg);
+
+    const aMsg = document.createElement('div');
+    aMsg.className = 'chat-msg-ai';
+    aMsg.id = 'ai-resp-current';
+    aMsg.innerText = useWeb ? 'Ricerca web in corso…' : '…';
+    chatBox.appendChild(aMsg);
+
+    chatBox.scrollTop = chatBox.scrollHeight;
+    pywebview.api.send_chat(text, useWeb);
+  }
+
+  function updateAiResponse(text) {
+    const el = document.getElementById('ai-resp-current');
+    if (el) {
+      el.innerText = text;
+      el.removeAttribute('id');
+      document.getElementById('chatBox').scrollTop = document.getElementById('chatBox').scrollHeight;
+    }
+  }
+
+  function setPreview(uri) {
+    document.getElementById('cropPreview').src = uri;
+  }
+
+  function setSuggestions(list) {
+    document.getElementById('statusText').innerText = '✨ Suggerimenti correlati';
+    const c = document.getElementById('chipsContainer');
+    c.innerHTML = '';
+    list.forEach(txt => {
+      const d = document.createElement('div');
+      d.className = 'chip-card';
+      d.innerText = txt;
+      d.onclick = () => pywebview.api.search_query(txt);
+      c.appendChild(d);
+    });
+  }
+
+  function setStatus(text) {
+    document.getElementById('statusText').innerText = text;
+  }
+</script>
+</body>
+</html>
+"""
+
+GLOBAL_WINDOW = None
+
+
+class DrawerApi:
+    def __init__(self, image_path, initial_geom):
+        self.image_path = image_path
+        self.initial_geom = initial_geom
+        self.conversation_history = []
+        self.is_first_prompt = True
+        self.client = None
+        if GROQ_API_KEY:
+            try:
+                from groq import Groq
+                self.client = Groq(api_key=GROQ_API_KEY)
+            except Exception as e:
+                print(f"Errore Groq: {e}")
+
+    def close_window(self):
+        global GLOBAL_WINDOW
+        if GLOBAL_WINDOW:
+            GLOBAL_WINDOW.destroy()
+
+    def toggle_fullscreen(self):
+        global GLOBAL_WINDOW
+        if GLOBAL_WINDOW:
+            try:
+                GLOBAL_WINDOW.toggle_fullscreen()
+            except Exception as e:
+                print(f"Errore toggle fullscreen: {e}")
+
+    def copy_image(self):
+        try:
+            from PIL import Image
+            img = Image.open(self.image_path)
+            output = io.BytesIO()
+            img.convert("RGB").save(output, "BMP")
+            data = output.getvalue()[14:]
+            output.close()
+            import win32clipboard  # type: ignore
+            win32clipboard.OpenClipboard()
+            win32clipboard.EmptyClipboard()
+            win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+            win32clipboard.CloseClipboard()
+        except Exception:
+            pass
+
+    def search_google(self):
+        webbrowser.open("https://images.google.com/")
+
+    def search_query(self, query):
+        url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
+        webbrowser.open(url)
+
+    def send_chat(self, text, use_web=False):
+        threading.Thread(target=self._ask_ai, args=(text, use_web), daemon=True).start()
+
+    def _ask_ai(self, text, use_web):
+        global GLOBAL_WINDOW
+        if not self.client or not GLOBAL_WINDOW:
+            return
+
+        web_context_str = ""
+        # 1. Se DuckDuckGo è attivo, cerca informazioni contestuali
+        if use_web:
+            # Crea query ottimizzata basata sulla domanda o sull'immagine/cronologia
+            search_query_term = text
+            if self.conversation_history:
+                last_turn = self.conversation_history[-1].get("text", "")
+                if len(text.split()) < 4 and last_turn:
+                    search_query_term = f"{last_turn} {text}"
+
+            snippets = search_duckduckgo(search_query_term, max_results=3)
+            if snippets:
+                web_context_str = "\n[Risultati Ricerca Web DuckDuckGo]:\n" + "\n".join(f"- {s}" for s in snippets)
+
+        # 2. Struttura del messaggio
+        # Per il primo prompt allega l'immagine alla domanda assieme alla domanda in sé
+        content_payload = []
+        user_text = text
+        if web_context_str:
+            user_text += f"\n\nRielabora tenendo conto di questi risultati web aggiornati:\n{web_context_str}"
+
+        content_payload.append({"type": "text", "text": user_text})
+
+        if self.is_first_prompt and os.path.exists(self.image_path):
+            with open(self.image_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            content_payload.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{b64}"}
+            })
+            self.is_first_prompt = False
+
+        # Costruisce la lista messaggi mantenendo il contesto precedente
+        messages = [
+            {"role": "system", "content": "Sei l'assistente visivo intelligente di Circle to Search. Fornisci risposte precise, concise e ben formattate."}
+        ]
+
+        # Inserisce la cronologia precedente
+        for turn in self.conversation_history:
+            messages.append({"role": turn["role"], "content": turn["text"]})
+
+        messages.append({"role": "user", "content": content_payload})
+
+        try:
+            completion = self.client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=messages,
+                max_tokens=400,
+                temperature=0.5,
+            )
+            answer = completion.choices[0].message.content.strip()
+
+            # Salva cronologia per le domande successive
+            self.conversation_history.append({"role": "user", "text": text})
+            self.conversation_history.append({"role": "assistant", "text": answer})
+
+            ans_clean = json.dumps(answer)
+            GLOBAL_WINDOW.evaluate_js(f"updateAiResponse({ans_clean})")
+        except Exception as e:
+            GLOBAL_WINDOW.evaluate_js(f"updateAiResponse('Errore: {e}')")
+
+
+def run_drawer_app(image_path, x, y, width, height):
+    global GLOBAL_WINDOW
+    import webview
+
+    def on_loaded():
+        if os.path.exists(image_path):
+            with open(image_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            uri = f"data:image/png;base64,{b64}"
+            GLOBAL_WINDOW.evaluate_js(f"setPreview('{uri}')")
+
+        if api and api.client and os.path.exists(image_path):
+            def fetch_sugg():
+                try:
+                    with open(image_path, "rb") as f:
+                        b64 = base64.b64encode(f.read()).decode()
+                    prompt = (
+                        "Sei Google Circle to Search. "
+                        "Guarda l'elemento selezionato. "
+                        "Fornisci: 1) Nome o identificazione in una riga. "
+                        "2) Fino a 2 suggerimenti rapidi. "
+                        "Rispondi in modo diretto senza testo di introduzione."
+                    )
+                    comp = api.client.chat.completions.create(
+                        model=GROQ_MODEL,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": prompt},
+                                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                                ],
+                            }
+                        ],
+                        max_tokens=200,
+                        temperature=0.4,
+                    )
+                    lines = [l.strip("-• * ") for l in comp.choices[0].message.content.strip().split("\n") if l.strip()][:3]
+                    GLOBAL_WINDOW.evaluate_js(f"setSuggestions({json.dumps(lines)})")
+                except Exception as e:
+                    GLOBAL_WINDOW.evaluate_js(f"setStatus('Nota: {e}')")
+
+            threading.Thread(target=fetch_sugg, daemon=True).start()
+
+    api = DrawerApi(image_path, (x, y, width, height))
+    GLOBAL_WINDOW = webview.create_window(
+        title="Circle to Search",
+        html=HTML_TEMPLATE,
+        js_api=api,
+        width=width,
+        height=height,
+        x=x,
+        y=y,
+        frameless=True,
+        easy_drag=False,
+        on_top=True,
+        transparent=True,
+        background_color='#000000'
+    )
+    GLOBAL_WINDOW.events.loaded += on_loaded
+    webview.start()
+
+
+if __name__ == "__main__":
+    if len(sys.argv) >= 6:
+        img_p = sys.argv[1]
+        x = int(sys.argv[2])
+        y = int(sys.argv[3])
+        w = int(sys.argv[4])
+        h = int(sys.argv[5])
+        run_drawer_app(img_p, x, y, w, h)
