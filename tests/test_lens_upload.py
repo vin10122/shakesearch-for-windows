@@ -5,7 +5,7 @@ import unittest
 
 import httpx
 from PIL import Image
-from lens_upload import upload_image, result_url
+from lens_upload import ConsentRequired, upload_image, result_url
 
 URL = 'https://lens.google.com/search?p=IMAGE_SESSION'
 
@@ -59,8 +59,9 @@ class DirectLensUploadTests(unittest.TestCase):
         for target in ('https://consent.google.com/m', 'https://accounts.google.com/login', 'https://www.google.com/sorry/index'):
             with self.subTest(target=target):
                 client = self.client(lambda request: httpx.Response(302, headers={'Location': target}))
-                with self.assertRaisesRegex(RuntimeError, 'richiede un consenso'):
+                with self.assertRaises(ConsentRequired) as error:
                     upload_image(png(), client=client)
+                self.assertEqual(error.exception.url, target)
 
     def test_blocked_upload_is_reported(self):
         for status in (403, 429, 500):

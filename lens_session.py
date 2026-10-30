@@ -1,10 +1,16 @@
 """Read Lens results through an isolated internal WebView, without exposing app APIs."""
+import base64
+import io
+import json
 import logging
 import threading
 import time
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from lens_upload import upload_image, result_url as is_image_result_url
+from PIL import Image
+
+from lens_upload import ConsentRequired, upload_image, result_url as is_image_result_url
+from lens_handoff import LENS_UPLOAD_URL
 logger = logging.getLogger('shakesearch')
 
 READ_RESULTS = r'''(() => {
@@ -81,7 +87,10 @@ READ_RESULTS = r'''(() => {
           text: [...answers, ...new Set(cards)].join('\n\n').slice(0, 6000), links,
           resultCount: cards.length, answerCount: answers.length, searchPage,
           landing: ['/', '/webhp', '/imghp'].includes(url.pathname),
+          uploadPrompt: Boolean(document.querySelector('input[type="file"]')) && /drag an image|trascina un'immagine|carica un file|upload a file/i.test(context),
           verification: /unusual traffic|traffico insolito|verify you are human|verifica di essere umano/i.test(context),
+          interactiveChallenge: Array.from(document.querySelectorAll('button, [role="button"], input:not([type="hidden"]), iframe[src*="recaptcha"]'))
+            .some(node => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden'),
           complete: document.readyState === 'complete'};
 })()'''
 
@@ -117,7 +126,7 @@ def classify(snapshot):
         return 'loading'
     if snapshot.get('searchPage') and text and (snapshot.get('resultCount', 0) > 0 or snapshot.get('answerCount', 0) > 0):
         return 'results'
-    if snapshot.get('landing'):
+    if snapshot.get('landing') or snapshot.get('uploadPrompt'):
         return 'landing'
     return 'loading'
 
@@ -132,8 +141,83 @@ class LensSession:
         self.window = None
         self.result_url = None
         self._image_result_url = None
+        self._browser_session = False
+        self._consent_visible = False
+        self._consent_rounds = 0
+        self._in_view_upload = False
+        self._cancelled = threading.Event()
         self._lock = threading.Lock()
         self._closed = threading.Event()
+
+    def _navigate(self, target):
+        if not google_url(target):
+            raise RuntimeError('La finestra Lens può aprire soltanto pagine Google autorizzate.')
+        if self.window is None:
+            factory = self.window_factory
+            if factory is None:
+                import webview
+                factory = webview.create_window
+            self.window = factory('ShakeSearch · Consenso Google Lens', url=target, hidden=True,
+                                  js_api=None, width=900, height=740, on_top=False)
+            window = self.window
+            def on_closed():
+                if self.window is window:
+                    self.window = None
+                    self._consent_visible = False
+                    self._cancelled.set()
+            try:
+                self.window.events.closed += on_closed
+            except (AttributeError, TypeError):
+                pass  # Minimal test adapters may not implement window events.
+        else:
+            self.window.load_url(target)
+        if self._closed.is_set():
+            self.close()
+            raise RuntimeError('La sessione Lens è stata chiusa.')
+
+    def _show_consent(self):
+        if not self._consent_visible:
+            if self._consent_rounds >= 1:
+                raise RuntimeError('Google continua a richiedere il consenso. Non posso completare automaticamente questa ricerca.')
+            self._consent_rounds += 1
+            self._consent_visible = True
+            self.window.on_top = True
+            self.window.show()
+            self.status('Completa il consenso nella finestra Google. Riprenderò automaticamente da quella stessa sessione.')
+
+    def _upload_in_browser(self):
+        # Execute only on Google's own origin, after the user's consent. The
+        # same WebView sends its own cookies; none are copied into Python.
+        with Image.open(io.BytesIO(self.image_bytes)) as image:
+            output = io.BytesIO()
+            image.save(output, 'PNG')
+            payload = dict(image=base64.b64encode(output.getvalue()).decode('ascii'),
+                           width=image.width, height=image.height, target=LENS_UPLOAD_URL)
+        data = json.dumps(payload).replace('<', '\\u003c')
+        script = r'''(() => {
+          if (location.protocol !== 'https:' || !['www.google.com', 'lens.google.com'].includes(location.hostname))
+            return {ok:false};
+          const payload = PAYLOAD;
+          const bytes = Uint8Array.from(atob(payload.image), value => value.charCodeAt(0));
+          const transfer = new DataTransfer();
+          transfer.items.add(new File([bytes], 'shakesearch.png', {type:'image/png'}));
+          const form = document.createElement('form');
+          form.method = 'POST'; form.action = payload.target; form.enctype = 'multipart/form-data';
+          const file = document.createElement('input'); file.type = 'file'; file.name = 'encoded_image';
+          file.files = transfer.files; form.appendChild(file);
+          if (file.files.length !== 1) return {ok:false};
+          for (const [name,value] of Object.entries({image_url:'',original_width:payload.width,original_height:payload.height})) {
+            const field = document.createElement('input'); field.type = 'hidden'; field.name = name;
+            field.value = String(value); form.appendChild(field);
+          }
+          form.hidden = true; document.body.appendChild(form);
+          setTimeout(() => form.submit(), 50);
+          return {ok:true};
+        })()'''.replace('PAYLOAD', data)
+        result = self.window.evaluate_js(script)
+        if not isinstance(result, dict) or not result.get('ok'):
+            raise RuntimeError('Non sono riuscito a inviare automaticamente il file dalla sessione Google autorizzata.')
+        self.status('Consenso acquisito. Invio l’immagine dalla stessa sessione Google…')
 
     def query(self, question=''):
         if not isinstance(question, str) or len(question) > 500:
@@ -141,41 +225,46 @@ class LensSession:
         with self._lock:
             if self._closed.is_set():
                 raise RuntimeError('La sessione Lens è stata chiusa.')
+            self._cancelled.clear()
+            self._consent_rounds = 0
+            self._in_view_upload = False
+            browser_upload = False
             if self.result_url is not None:
-                target = followup_url(self.result_url, question)
+                self._navigate(followup_url(self.result_url, question))
+            elif self._browser_session:
+                browser_upload = True
+                self._navigate('https://www.google.com/imghp?hl=it')
             else:
                 self.status('Invio diretto dell’immagine a Google Lens…')
-                # Python sends the real multipart bytes. No local upload page,
-                # browser file input or visible upload window is involved.
-                target = self.uploader(self.image_bytes)
-                if not is_image_result_url(target):
-                    raise RuntimeError('Google Lens non ha confermato una ricerca associata all’immagine.')
-                self._image_result_url = target
-                if question:
-                    target = followup_url(target, question)
-            if self._closed.is_set():
-                raise RuntimeError('La sessione Lens è stata chiusa.')
-            if self.window is None:
-                factory = self.window_factory
-                if factory is None:
-                    import webview
-                    factory = webview.create_window
-                self.window = factory('ShakeSearch · Lettore Lens', url=target, hidden=True,
-                                      js_api=None, width=900, height=740, on_top=False)
-            else:
-                self.window.load_url(target)
-            if self._closed.is_set():
-                self.close()
-                raise RuntimeError('La sessione Lens è stata chiusa.')
-            self.status('Immagine inviata. Attendo i risultati di Lens…')
-            return self._read_results()
+                try:
+                    target = self.uploader(self.image_bytes)
+                except ConsentRequired as consent:
+                    self._browser_session = True
+                    browser_upload = True
+                    self._navigate(consent.url)
+                else:
+                    if not is_image_result_url(target):
+                        raise RuntimeError('Google Lens non ha confermato una ricerca associata all’immagine.')
+                    self._image_result_url = target
+                    self._navigate(followup_url(target, question) if question else target)
+            result = self._read_results(allow_upload=browser_upload)
+            # An image posted after consent is first identified without a text
+            # query. Apply the optional question after the visual session exists.
+            if (browser_upload or self._in_view_upload) and question:
+                self._navigate(followup_url(self.result_url, question))
+                result = self._read_results()
+            return result
 
-    def _read_results(self):
+    def _read_results(self, allow_upload=False):
         deadline = time.monotonic() + self.timeout
         previous = None
         landing_since = None
         last_state = None
-        while time.monotonic() < deadline and not self._closed.is_set():
+        uploaded_in_view = False
+        upload_navigation_done = False
+        if self._consent_visible:
+            deadline = time.monotonic() + 180
+        while time.monotonic() < deadline and not self._closed.is_set() and not self._cancelled.is_set():
             try:
                 current = self.window.get_current_url()
                 if not current or current.startswith(('http://127.0.0.1:', 'about:')):
@@ -204,14 +293,43 @@ class LensSession:
             if state != 'landing':
                 landing_since = None
             if state == 'verification':
-                self.result_url = None
-                raise RuntimeError('Google Lens richiede consenso, accesso o verifica. La richiesta automatica non è stata completata e non ci sono risultati da trascrivere.')
+                previous = None
+                if not snapshot.get('complete') or not snapshot.get('interactiveChallenge', True):
+                    time.sleep(.25)
+                    continue
+                self._browser_session = True
+                if not self._consent_visible:
+                    self._show_consent()
+                    deadline = time.monotonic() + 180
+                allow_upload = True
+                uploaded_in_view = False
+            elif self._consent_visible:
+                # Consent has finished in this exact WebView/cookie context.
+                self.window.hide()
+                self.window.on_top = False
+                self._consent_visible = False
+                deadline = time.monotonic() + self.timeout
+                self.status('Consenso completato. Attendo i risultati di Lens…')
+                continue
             elif state == 'error':
+                if allow_upload and not uploaded_in_view and not upload_navigation_done:
+                    # A consent redirect can lose the original POST body and
+                    # land on a GET-only upload error. Repost from Google origin.
+                    self._navigate('https://www.google.com/imghp?hl=it')
+                    upload_navigation_done = True
+                    previous = None
+                    continue
                 self.result_url = None
                 raise RuntimeError('Google Lens ha restituito una pagina di errore, non risultati.')
             elif state == 'landing':
                 previous = None
-                if landing_since is None:
+                if allow_upload and not uploaded_in_view and snapshot.get('complete'):
+                    self._upload_in_browser()
+                    self._in_view_upload = True
+                    uploaded_in_view = True
+                    landing_since = None
+                    deadline = time.monotonic() + self.timeout
+                elif landing_since is None:
                     landing_since = time.monotonic()
                 elif time.monotonic() - landing_since > 8:
                     self.result_url = None
@@ -220,6 +338,8 @@ class LensSession:
                 signature = (snapshot['url'], snapshot.get('text'), repr(snapshot.get('links')))
                 if previous == signature:
                     self.result_url = snapshot['url'] if is_image_result_url(snapshot['url']) else self._image_result_url
+                    if not self.result_url:
+                        raise RuntimeError('Lens non ha mantenuto il riferimento all’immagine dopo il consenso.')
                     self.window.hide()
                     return dict(text=snapshot.get('text', ''), links=snapshot.get('links', []))
                 previous = signature
@@ -229,6 +349,10 @@ class LensSession:
         if self._closed.is_set():
             raise RuntimeError('La sessione Lens è stata chiusa.')
         self.result_url = None
+        if self._cancelled.is_set():
+            raise RuntimeError('La finestra Google è stata chiusa prima di completare la ricerca. Puoi riprovare.')
+        if self._consent_visible:
+            raise RuntimeError('Consenso Google non completato. Completa la finestra aperta e riprova.')
         raise RuntimeError('Non sono riuscito a leggere risultati reali da Lens. Google potrebbe richiedere una verifica o aver cambiato la pagina.')
 
     def close(self):

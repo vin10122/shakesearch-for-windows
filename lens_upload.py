@@ -14,6 +14,12 @@ from lens_handoff import LENS_UPLOAD_URL
 GOOGLE_HOSTS = {'lens.google.com', 'www.google.com', 'consent.google.com', 'accounts.google.com'}
 
 
+class ConsentRequired(RuntimeError):
+    def __init__(self, url):
+        self.url = url
+        super().__init__('Google richiede un consenso, un accesso o una verifica prima di continuare.')
+
+
 def result_url(url):
     parsed = urlsplit(url)
     if parsed.scheme != 'https' or parsed.hostname not in {'lens.google.com', 'www.google.com'}:
@@ -86,7 +92,7 @@ def upload_image(image_bytes, *, client=None):
                 if parsed.scheme != 'https' or parsed.hostname not in GOOGLE_HOSTS or parsed.username or parsed.password or parsed.port not in (None, 443):
                     raise RuntimeError('Google Lens ha restituito un reindirizzamento inatteso; invio interrotto.')
                 if parsed.hostname in {'consent.google.com', 'accounts.google.com'} or '/sorry/' in parsed.path:
-                    raise RuntimeError('Google richiede un consenso, un accesso o una verifica: la richiesta automatica non è stata completata.')
+                    raise ConsentRequired(target)
                 if result_url(target):
                     return target
                 if parsed.path in ('/', '/imghp', '/webhp'):

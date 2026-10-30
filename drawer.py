@@ -749,7 +749,11 @@ def run_drawer_app(image_path, x, y, width, height):
     )
     GLOBAL_WINDOW.events.loaded += on_loaded
     GLOBAL_WINDOW.events.closed += api._close_lens_session
-    webview.start()
+    # A dedicated app profile retains Google's consent choice between captures.
+    # Cookies remain in WebView storage and are never extracted into Python.
+    profile = Path(os.getenv('LOCALAPPDATA') or tempfile.gettempdir()) / 'ShakeSearch' / 'WebViewProfile'
+    profile.mkdir(parents=True, exist_ok=True)
+    webview.start(private_mode=False, storage_path=str(profile))
 
 
 if __name__ == "__main__":

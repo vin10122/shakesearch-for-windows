@@ -152,10 +152,20 @@ chat reports that problem without opening another window. If no
 readable results are found, the chat reports an error. No additional API
 key or public image-hosting service is used; the image is sent directly to Google.
 
-The hidden Google reader has no access to ShakeSearch's application API. It is
-never shown automatically. If Google requires consent, login or human verification,
-the automatic request stops and the chat reports it. It does not open a verification
-or upload window. Closing ShakeSearch's chat also closes the hidden reader.
+The hidden Google reader has no access to ShakeSearch's application API. It stays
+hidden during normal searches. If Google requires consent, access or a human
+verification, ShakeSearch shows that same internal window once and waits for your
+choice. It never chooses a consent option or solves a verification for you.
+
+After you finish, ShakeSearch keeps the authorized WebView session, hides the
+window and automatically submits the selected image from Google's own page if
+needed. The response is read back into the chat from that same session. It does
+not switch back to a separate HTTP cookie jar after consent. Closing the consent
+window cancels the pending request; closing the chat also closes the internal reader.
+
+Google's consent choice is retained in ShakeSearch's dedicated WebView profile
+under `%LOCALAPPDATA%\ShakeSearch\WebViewProfile` on Windows. Cookies are managed
+by the WebView and are not extracted into Python or copied from your default browser.
 
 This uses Google's web upload endpoint and result pages, not an official Lens API. Page structure,
 image-session lifetime and support for follow-up questions can change. Automated
@@ -194,6 +204,7 @@ python -m pip install playwright
 python -m playwright install chromium
 python tests/check_lens_chat_browser.py
 python tests/check_lens_reader_browser.py
+python tests/check_lens_consent_browser.py
 ```
 
 ## License
