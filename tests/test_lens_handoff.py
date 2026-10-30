@@ -32,9 +32,9 @@ class LensHandoffTests(unittest.TestCase):
     def handoff(self, question=''):
         handoff = LensHandoff(image_bytes(), question)
         self.addCleanup(handoff.close)
-        with patch('lens_handoff.webbrowser.open', return_value=True) as browser:
+        with patch('lens_handoff.open_browser_window', return_value=True) as browser:
             handoff.open()
-        browser.assert_called_once_with(handoff.url, new=2)
+        browser.assert_called_once_with(handoff.url)
         return handoff
 
     def test_page_delivered_once_and_contains_direct_browser_upload(self):
@@ -64,7 +64,7 @@ class LensHandoffTests(unittest.TestCase):
 
     def test_browser_failure_closes_server(self):
         handoff = LensHandoff(image_bytes())
-        with patch('lens_handoff.webbrowser.open', return_value=False):
+        with patch('lens_handoff.open_browser_window', return_value=False):
             with self.assertRaisesRegex(RuntimeError, 'browser'):
                 handoff.open()
         self.assertTrue(handoff.closed)
@@ -113,6 +113,27 @@ class DrawerLensTests(unittest.TestCase):
         with patch.object(drawer, 'LensHandoff') as factory:
             self.assertFalse(self.api.send_to_lens()['ok'])
         factory.assert_not_called()
+
+    def test_drawer_is_lowered_before_browser_opens(self):
+        window = Mock(on_top=True)
+        with patch.object(drawer, 'GLOBAL_WINDOW', window), patch.object(drawer, 'LensHandoff') as factory:
+            factory.return_value.closed = False
+            def opened():
+                self.assertFalse(window.on_top)
+                window.minimize.assert_called_once()
+            factory.return_value.open.side_effect = opened
+            self.assertEqual(self.api.send_to_lens(), dict(ok=True))
+        window.restore.assert_not_called()
+        window.destroy.assert_not_called()
+
+    def test_drawer_is_restored_when_browser_launch_fails(self):
+        window = Mock(on_top=True)
+        with patch.object(drawer, 'GLOBAL_WINDOW', window), patch.object(drawer, 'LensHandoff') as factory, self.assertLogs('shakesearch', level='ERROR'):
+            factory.return_value.open.side_effect = RuntimeError('no browser')
+            self.assertFalse(self.api.send_to_lens()['ok'])
+        self.assertTrue(window.on_top)
+        window.restore.assert_called_once()
+        factory.return_value.close.assert_called_once()
 
     def test_browser_failure_is_reported_to_ui(self):
         with patch.object(drawer, 'LensHandoff') as factory, self.assertLogs('shakesearch', level='ERROR'):

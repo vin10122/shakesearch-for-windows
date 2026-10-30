@@ -557,7 +557,22 @@ class DrawerApi:
                 if len(self._lens_handoffs) >= 4:
                     self._lens_handoffs.pop(0).close()
                 handoff = LensHandoff(self.image_bytes, question)
-                handoff.open()
+                window = GLOBAL_WINDOW
+                previous_on_top = window.on_top if window else None
+                try:
+                    if window:
+                        window.on_top = False
+                        window.minimize()
+                    handoff.open()
+                except Exception:
+                    handoff.close()
+                    if window:
+                        try:
+                            window.restore()
+                            window.on_top = previous_on_top
+                        except Exception:
+                            logging.getLogger('shakesearch').exception('Unable to restore the chat window')
+                    raise
                 self._lens_handoffs.append(handoff)
             return dict(ok=True)
         except ValueError as error:

@@ -80,6 +80,7 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
 | ocr_viewer.py | Image viewer with editable text recognition and clipboard support |
 | image_clipboard.py | Windows clipboard image transfer (DIB and PNG) |
 | lens_handoff.py | Experimental image handoff to Google Lens in the default browser |
+| browser_window.py | Separate browser-window launch and Windows focus handling |
 | requirements.txt | Python dependencies |
 | .env | Your API keys (not tracked by git) |
 | .gitignore | Files excluded from version control |
@@ -132,7 +133,12 @@ request failures and truncated text are shown in the window.
 ## Google Lens handoff (experimental)
 
 Enter an optional question in **Cerca con Google Lens**, then click **Invia a Lens**.
-ShakeSearch opens the default browser and prepares an automatic image upload to
+ShakeSearch minimizes its chat panel and opens a separate browser window for
+Google Lens. On Windows, Chrome, Edge, Firefox, Brave and Vivaldi receive an explicit
+new-window command, and ShakeSearch requests foreground focus for the new window.
+You do not need to close the capture panel yourself. If browser launch fails, the
+chat panel is restored. Other browser handlers receive a standard new-window request,
+which they may choose to handle as a tab. The browser prepares an automatic image upload to
 Google Lens. The question is included in the request. The capture stays on your
 computer until the browser sends it directly to Google; no public image-hosting
 service is used. A temporary, one-use local page handles the transfer and expires

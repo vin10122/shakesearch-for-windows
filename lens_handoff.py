@@ -9,9 +9,9 @@ import io
 import json
 import secrets
 import threading
-import webbrowser
 
 from PIL import Image
+from browser_window import open_browser_window
 
 # Chromium's Lens standalone base URL is https://lens.google.com/v3/;
 # its Google image-search template appends "upload". lens.google is not the upload host.
@@ -122,7 +122,7 @@ class LensHandoff:
         self._timer.daemon = True
         self._timer.start()
         try:
-            if not webbrowser.open(self.url, new=2):
+            if not open_browser_window(self.url):
                 raise RuntimeError('Impossibile aprire il browser predefinito.')
         except Exception:
             self.close()

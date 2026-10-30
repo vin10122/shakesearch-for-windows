@@ -21,7 +21,7 @@ image=Image.new('RGB',(320,200),'white')
 ImageDraw.Draw(image).rectangle((40,40,280,160),outline='orange',width=8)
 image.save(output,'PNG')
 question='Dove trovo questo? è arancione </script><script>alert(1)</script>'
-with patch('lens_handoff.webbrowser.open',return_value=True):
+with patch('lens_handoff.open_browser_window',return_value=True):
     handoff=LensHandoff(output.getvalue(),question); handoff.open()
 try:
     with sync_playwright() as runner:
@@ -57,7 +57,7 @@ try:
         assert parts['q'].get_payload(decode=True).decode('utf-8')==question
         assert not dialogs,dialogs
         print('PASS Chromium: auto navigation, multipart PNG pixels, question and HTML-injection safety')
-        with patch('lens_handoff.webbrowser.open',return_value=True):
+        with patch('lens_handoff.open_browser_window',return_value=True):
             fallback=LensHandoff(output.getvalue());fallback.open()
         try:
             other=browser.new_page()
