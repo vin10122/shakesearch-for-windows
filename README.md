@@ -22,7 +22,7 @@ It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to un
 ## Requirements
 
 - Windows 10 or Windows 11
-- Python 3.10 or newer
+- Python 3.10 or newer (64-bit)
 - Microsoft Edge WebView2 Runtime (required by the chat window on Windows)
 - A free Groq API key from https://console.groq.com/
 
@@ -60,11 +60,44 @@ It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to un
 
 | File | Description |
 |------|-------------|
-| shakesearch.py | Main application: shake detection, screen capture, overlay |
+| shakesearch.py | Main application: input listeners, Qt screen capture, session management |
+| overlay.py | Qt selection overlay and orange plasma animation |
 | drawer.py | Drawer window: image preview, AI chat |
 | requirements.txt | Python dependencies |
 | .env | Your API keys (not tracked by git) |
 | .gitignore | Files excluded from version control |
+
+## Capture animation
+
+The capture overlay uses Qt (PySide6). On each monitor, an orange plasma wave
+moves from the edges to the center, returns to the edges, then fades to a thin
+orange perimeter line. The sequence takes two seconds; selection stays available
+throughout. Screenshots remain at their native resolution, including on mixed-DPI
+monitor setups.
+
+After updating an existing installation, install the new Qt dependency:
+
+```powershell
+python -m pip install -r requirements.txt
+python shakesearch.py
+```
+
+## Troubleshooting
+
+On Windows, application and chat-process logs are written to
+`%TEMP%\shakesearch.log`. Open them with:
+
+```powershell
+notepad "$env:TEMP\shakesearch.log"
+```
+
+## Development checks
+
+Run the Qt rendering, input, multi-monitor lifecycle and crop tests without a desktop:
+
+```bash
+QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v
+```
 
 ## License
 
