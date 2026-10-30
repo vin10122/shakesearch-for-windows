@@ -10,7 +10,7 @@ from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from overlay import AnimatedScreenOverlay, plasma_state
+from overlay import ANIMATION_MS, FRAME_INTERVAL_MS, AnimatedScreenOverlay, plasma_state
 from shakesearch import MultiScreenOverlayManager, ShakeSearch
 
 
@@ -79,11 +79,24 @@ class OverlayTests(unittest.TestCase):
         QTest.keyClick(self.overlay, Qt.Key.Key_Escape)
         self.manager.cancel.assert_called_once()
 
-    def test_animation_timer_completes(self):
+    def test_animation_settles_but_border_keeps_moving(self):
         self.overlay.start_animation()
-        QTest.qWait(2100)
-        self.assertFalse(self.overlay.timer.isActive())
+        QTest.qWait(ANIMATION_MS + 100)
+        self.assertTrue(self.overlay.timer.isActive())
         self.assertEqual(self.overlay.progress, 1)
+        phase = self.overlay.border_phase
+        before = self.overlay.grab().toImage()
+        QTest.qWait(150)
+        self.assertNotEqual(self.overlay.border_phase, phase)
+        after = self.overlay.grab().toImage()
+        self.assertNotEqual(before, after)
+        self.assertEqual(before.copy(20, 80, 600, 300), after.copy(20, 80, 600, 300))
+        self.assertLess(FRAME_INTERVAL_MS, 8)
+
+    def test_close_stops_continuous_animation(self):
+        self.overlay.start_animation()
+        self.overlay.close()
+        self.assertFalse(self.overlay.timer.isActive())
 
     def test_input_signal_runs_on_gui_thread(self):
         controller = ShakeSearch(self.app)

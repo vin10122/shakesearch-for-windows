@@ -71,8 +71,10 @@ It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to un
 
 The capture overlay uses Qt (PySide6). On each monitor, an orange plasma wave
 moves from the edges to the center, returns to the edges, then fades to a thin
-orange perimeter line. The sequence takes two seconds; selection stays available
-throughout. Screenshots remain at their native resolution, including on mixed-DPI
+orange perimeter line with a continuously moving highlight. The sequence takes
+2.8 seconds and requests a frame every 7 ms (about 144 updates per second, subject
+to display refresh rate and rendering performance). Selection stays available
+throughout. After the opening sequence, only the border area is repainted. Screenshots remain at their native resolution, including on mixed-DPI
 monitor setups.
 
 After updating an existing installation, install the new Qt dependency:

@@ -3,17 +3,18 @@ import math
 
 from PIL import Image
 from PySide6.QtCore import Qt, QRectF, QPointF, QElapsedTimer, QTimer
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen, QFont
+from PySide6.QtGui import QColor, QConicalGradient, QImage, QPainter, QPainterPath, QPen, QFont, QRegion
 from PySide6.QtWidgets import QWidget
 
 AMBER = QColor('#ff944d')
-ANIMATION_MS = 2000
+ANIMATION_MS = 2800
+FRAME_INTERVAL_MS = 7  # About 144 updates/s; actual presentation depends on the display.
 
 
 def plasma_state(progress):
     """Return normalized radius and glow strength; settled state is border only."""
     progress = max(0.0, min(1.0, progress))
-    ease = lambda t: t * t * (3 - 2 * t)
+    ease = lambda t: t * t * t * (t * (t * 6 - 15) + 10)
     if progress < .4:
         return 1 - .96 * ease(progress / .4), 1.0
     if progress < .48:
@@ -34,14 +35,40 @@ class AnimatedScreenOverlay(QWidget):
         self.setCursor(Qt.CursorShape.CrossCursor)
         self.setMouseTracking(True)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
         self.points = []
         self.drawing = False
         self.pending_bbox = None
         self.clock = QElapsedTimer()
         self.progress = 0.0
+        self.border_phase = 0.0
+        # Only the soft plasma uses a smaller surface. Screenshot, selection and
+        # persistent border stay at native resolution, including on 4K monitors.
+        self.plasma_scale = min(1.0, 640 / max(self.width(), self.height()))
+        self.plasma_buffer = QImage(math.ceil(self.width() * self.plasma_scale),
+                                   math.ceil(self.height() * self.plasma_scale),
+                                   QImage.Format.Format_ARGB32_Premultiplied)
+        # Cache the screenshot, dimming and caption instead of alpha-blending a
+        # full desktop every frame. Native pixels remain untouched for cropping.
+        self.static_background = self.background.copy()
+        painter = QPainter(self.static_background)
+        painter.fillRect(self.rect(), QColor(12, 8, 5, 65))
+        painter.setFont(QFont('Segoe UI', 12))
+        painter.setPen(Qt.GlobalColor.white)
+        painter.drawText(QRectF(0, 22, self.width(), 30), Qt.AlignmentFlag.AlignCenter,
+                         'Circle anything · Esc to exit')
+        painter.end()
+        self.border_region = QRegion(self.rect()).subtracted(
+            QRegion(self.rect().adjusted(16, 16, -16, -16)))
+        self.wave_samples = []
+        for step in range(97):
+            angle = step * math.tau / 96
+            dx, dy = math.cos(angle), math.sin(angle)
+            reach = 1 / max(abs(dx), abs(dy))
+            self.wave_samples.append((angle, dx * reach, dy * reach))
         self.timer = QTimer(self)
         self.timer.setTimerType(Qt.TimerType.PreciseTimer)
-        self.timer.setInterval(16)
+        self.timer.setInterval(FRAME_INTERVAL_MS)
         self.timer.timeout.connect(self.advance_animation)
 
     def start_animation(self):
@@ -50,26 +77,27 @@ class AnimatedScreenOverlay(QWidget):
         self.update()
 
     def advance_animation(self):
+        was_transitioning = self.progress < 1
         self.progress = min(1.0, self.clock.elapsed() / ANIMATION_MS)
-        if self.progress >= 1:
-            self.timer.stop()
-        self.update()
+        self.border_phase = (self.clock.elapsed() / 9000) % 1
+        if was_transitioning:
+            self.update()
+        else:
+            # Once the plasma has settled, repaint only the thin perimeter.
+            self.update(self.border_region)
 
     def plasma_path(self, radius, band):
         rect = self.rect().toRectF().adjusted(3, 3, -3, -3)
         cx, cy = rect.center().x(), rect.center().y()
         path = QPainterPath()
-        for step in range(193):
-            angle = step * math.tau / 192
-            dx, dy = math.cos(angle), math.sin(angle)
-            reach = 1 / max(abs(dx), abs(dy))
+        for step, (angle, dx, dy) in enumerate(self.wave_samples):
             # Organic waves disappear as the returning light reaches the edges.
             wave = (math.sin(angle * 7 + self.progress * 17 + band) * .025 +
                     math.sin(angle * 13 - self.progress * 11) * .012)
             wave *= math.sin(math.pi * min(1.0, radius))
             r = max(.01, min(1.0, radius + wave + band * .012 * (1 - radius)))
-            point = QPointF(cx + dx * reach * rect.width() / 2 * r,
-                            cy + dy * reach * rect.height() / 2 * r)
+            point = QPointF(cx + dx * rect.width() / 2 * r,
+                            cy + dy * rect.height() / 2 * r)
             if step == 0:
                 path.moveTo(point)
             else:
@@ -81,25 +109,33 @@ class AnimatedScreenOverlay(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         # Keep screen pixels in place; selection maps logical to physical pixels.
-        painter.drawPixmap(self.rect(), self.background)
-        painter.fillRect(self.rect(), QColor(12, 8, 5, 65))
+        painter.drawPixmap(self.rect(), self.static_background)
         radius, strength = plasma_state(self.progress)
         if strength > .001:
+            self.plasma_buffer.fill(Qt.GlobalColor.transparent)
+            light = QPainter(self.plasma_buffer)
+            light.setRenderHint(QPainter.RenderHint.Antialiasing)
+            light.scale(self.plasma_scale, self.plasma_scale)
             for band in range(3):
                 path = self.plasma_path(radius, band)
                 # Layer translucent strokes for a soft glow without CPU image resizes.
-                for width, alpha in ((64, 4), (40, 7), (24, 12), (12, 24), (4, 115)):
+                for width, alpha in ((56, 6), (28, 12), (12, 24), (4, 115)):
                     color = QColor(255, 105 + band * 30, 30, round(alpha * strength))
                     pen = QPen(color, width)
                     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-                    painter.setPen(pen)
-                    painter.drawPath(path)
-        painter.setPen(QPen(AMBER, 2))
+                    light.setPen(pen)
+                    light.drawPath(path)
+            light.end()
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+            painter.drawImage(self.rect(), self.plasma_buffer)
+        gradient = QConicalGradient(QPointF(self.width() / 2, self.height() / 2),
+                                    self.border_phase * 360)
+        for position, color in ((0, '#ffe2b5'), (.07, '#ffc078'), (.22, '#ff944d'),
+                                (.65, '#e36b21'), (.88, '#ff944d'), (1, '#ffe2b5')):
+            gradient.setColorAt(position, QColor(color))
+        painter.setPen(QPen(gradient, 2.5))
         painter.drawRoundedRect(QRectF(self.rect()).adjusted(2, 2, -2, -2), 12, 12)
         painter.setFont(QFont('Segoe UI', 12))
-        painter.setPen(Qt.GlobalColor.white)
-        painter.drawText(QRectF(0, 22, self.width(), 30), Qt.AlignmentFlag.AlignCenter,
-                         'Circle anything · Esc to exit')
         if len(self.points) > 1 and self.drawing:
             trail = QPainterPath(self.points[0])
             for point in self.points[1:]:
