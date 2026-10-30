@@ -14,6 +14,19 @@ load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
+CHAT_MAX_TOKENS = 400
+CHAT_SYSTEM_PROMPT = (
+    "You are the intelligent visual assistant of ShakeSearch. "
+    "Answer accurately in the user's language and lead with the key answer. "
+    f"Your entire response must fit within {CHAT_MAX_TOKENS} output tokens. "
+    "Aim for 200–280 tokens or fewer; simple questions need only a few sentences. "
+    "Plan the scope before answering so you can finish comfortably within the budget. "
+    "Prioritize the essential answer and omit optional explanations, repeated context "
+    "and long introductions. Use short paragraphs or a few bullets. "
+    "If code is needed, give only a short, complete example and close every code block. "
+    "Reserve enough room to finish your final sentence. Never start a list or example "
+    "you cannot complete within the remaining budget."
+)
 
 
 HTML_TEMPLATE = """<!DOCTYPE html>
@@ -531,7 +544,7 @@ class DrawerApi:
 
         # Costruisce la lista messaggi mantenendo il contesto precedente
         messages = [
-            {"role": "system", "content": "You are the intelligent visual assistant of ShakeSearch. Provide accurate, concise, and well-formatted answers."}
+            {"role": "system", "content": CHAT_SYSTEM_PROMPT}
         ]
 
         # Inserisce la cronologia precedente
@@ -544,7 +557,7 @@ class DrawerApi:
             completion = self.client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=messages,
-                max_tokens=400,
+                max_tokens=CHAT_MAX_TOKENS,
                 temperature=0.5,
             )
             answer = completion.choices[0].message.content.strip()
