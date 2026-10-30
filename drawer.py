@@ -6,10 +6,12 @@ import threading
 import logging
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from dotenv import load_dotenv
 from image_clipboard import copy_image_to_clipboard
 from lens_process import LensProcessClient
+from lens_answer import answer_from_lens
 
 load_dotenv()
 
@@ -360,7 +362,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div class="lens-search">
       <label for="lensQuestion">Cerca con Google Lens</label>
       <textarea id="lensQuestion" maxlength="500" placeholder="Domanda facoltativa, per esempio: dove posso comprarlo?"></textarea>
-      <span>Risultati Lens nella chat. Il ritaglio viene inviato a Google.</span>
+      <span>Lens cerca l’immagine; l’AI interpreta i risultati nella chat. Il ritaglio viene inviato a Google e i risultati all’API configurata.</span>
       <label><input type="checkbox" id="lensChatMode"> Usa Lens per le prossime domande</label>
       <button class="btn-action" id="sendToLensButton" onclick="sendToLens()">Invia a Lens</button>
       <span id="lensStatus" role="status" aria-live="polite"></span>
@@ -403,22 +405,31 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   async function askLens(text) {
     const id = createChatTurn(text || 'Cerca questa immagine con Lens', 'lens');
+    const answer = document.getElementById(id);
+    const started = Date.now();
+    const bridgeCall = promise => new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('bridge timeout')), 12000);
+      Promise.resolve(promise).then(value => { clearTimeout(timer); resolve(value); },
+        error => { clearTimeout(timer); reject(error); });
+    });
     try {
-      const ticket = await pywebview.api.send_to_lens(text);
+      const ticket = await bridgeCall(pywebview.api.send_to_lens(text));
       let result = ticket;
       if (ticket.ok) {
         while (true) {
-          const state = await pywebview.api.poll_lens(ticket.job_id);
+          if (Date.now() - started > 350000) throw new Error('Lens timeout');
+          const state = await bridgeCall(pywebview.api.poll_lens(ticket.job_id));
           document.getElementById('lensStatus').textContent = state.status || '';
           if (state.done) { result = state.result; break; }
+          answer.textContent = (state.status || 'Attendo Google Lens…') + '\n' + Math.floor((Date.now() - started) / 1000) + ' s';
           await new Promise(resolve => setTimeout(resolve, 250));
         }
       }
-      const answer = document.getElementById(id);
       if (!result.ok) {
         answer.textContent = result.error;
       } else {
-        answer.textContent = 'Google Lens\n\n' + result.text;
+        answer.textContent = (result.interpreted ? 'Risposta AI basata sui risultati Lens\n\n' : 'Google Lens\n\n') + result.text;
+        if (result.warning) answer.textContent += '\n\n' + result.warning;
         for (const link of result.links || []) {
           try {
             const url = new URL(link.url);
@@ -435,7 +446,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         }
       }
     } catch (error) {
-      updateAiResponse('Impossibile leggere Lens. Riprova.', id);
+      document.getElementById('lensStatus').textContent = 'Richiesta Lens interrotta.';
+      updateAiResponse('Lens non ha completato la richiesta. Puoi riprovare; dettagli in %TEMP%\\shakesearch.log.', id);
+      // Do not wait for another bridge call if the bridge itself is stalled.
+      try { Promise.resolve(pywebview.api.cancel_lens()).catch(() => {}); } catch (_) {}
     }
   }
 
@@ -561,6 +575,8 @@ class DrawerApi:
         self._lens_lock = threading.Lock()
         self._lens_client = None
         self._lens_jobs = {}
+        self._lens_answers = {}
+        self._lens_history = []
         self._lens_closed = False
         if GROQ_API_KEY:
             try:
@@ -612,11 +628,13 @@ class DrawerApi:
                     self._lens_client = LensProcessClient(self.image_bytes)
                 token = self._lens_client.submit(question)
                 self._lens_jobs[token] = self._lens_client
+                self._lens_answers[token] = dict(question=question, started=time.monotonic(), processing=False, result=None)
                 for old in list(self._lens_jobs):
                     if len(self._lens_jobs) <= 64:
                         break
                     if self._lens_jobs[old].poll(old)['done']:
                         del self._lens_jobs[old]
+                        self._lens_answers.pop(old, None)
             return dict(ok=True, job_id=token)
         except Exception as error:
             logging.getLogger('shakesearch').exception('Unable to queue Lens request')
@@ -627,7 +645,53 @@ class DrawerApi:
             client = self._lens_jobs.get(token)
         if client is None:
             return dict(done=True, result=dict(ok=False, error='Richiesta Lens annullata o sconosciuta.'))
-        return client.poll(token)
+        state = client.poll(token)
+        if not state['done'] or not state['result'].get('ok'):
+            return state
+        with self._lens_lock:
+            job = self._lens_answers.get(token)
+            if job is None:
+                return dict(done=True, result=dict(ok=False, error='Richiesta Lens annullata.'))
+            if job['result'] is not None:
+                return dict(done=True, status='Risposta Lens pronta.', result=job['result'])
+            if not job['processing']:
+                job['processing'] = True
+                job['started'] = time.monotonic()
+                threading.Thread(target=self._interpret_lens, args=(token, state['result']), daemon=True).start()
+            elif time.monotonic() - job['started'] > 35:
+                job['result'] = dict(state['result'], interpreted=False,
+                                     warning='L’API non ha risposto in tempo. Mostro il testo originale di Lens.')
+                return dict(done=True, status='Risultati originali Lens.', result=job['result'])
+        return dict(done=False, status='Risultati Lens ricevuti. L’AI sta preparando la risposta…', result=None)
+
+    def _interpret_lens(self, token, result):
+        with self._lens_lock:
+            job = self._lens_answers.get(token)
+            if job is None:
+                return
+            question = job['question']
+            history = list(self._lens_history)
+        answer = answer_from_lens(self.client, question, result, model=GROQ_MODEL,
+                                  system_prompt=CHAT_SYSTEM_PROMPT, history=history)
+        with self._lens_lock:
+            job = self._lens_answers.get(token)
+            if job is not None and job['result'] is None:
+                job['result'] = answer
+                if answer.get('interpreted'):
+                    self._lens_history.extend([dict(role='user', content=question),
+                                               dict(role='assistant', content=answer['text'])])
+                    self._lens_history = self._lens_history[-8:]
+
+    def cancel_lens(self):
+        with self._lens_lock:
+            client = self._lens_client
+            self._lens_client = None
+            for job in self._lens_answers.values():
+                if job['result'] is None:
+                    job['result'] = dict(ok=False, error='Richiesta Lens annullata.')
+        if client is not None:
+            client.close()
+        return dict(ok=True)
 
     def _close_lens_session(self):
         with self._lens_lock:
@@ -637,6 +701,7 @@ class DrawerApi:
                 clients.add(self._lens_client)
             self._lens_client = None
             self._lens_jobs.clear()
+            self._lens_answers.clear()
         for client in clients:
             client.close()
 

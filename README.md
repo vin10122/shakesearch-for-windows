@@ -84,6 +84,7 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
 | lens_session.py | Isolated internal Lens session and reading of visible results |
 | lens_process.py | Nonblocking Lens request queue and child-process management |
 | lens_worker.py | Dedicated Lens WebView process and persistent consent profile |
+| lens_answer.py | API interpretation of real Lens results with source links |
 | browser_window.py | Standalone browser-launch helper |
 | requirements.txt | Python dependencies |
 | .env | Your API keys (not tracked by git) |
@@ -140,7 +141,9 @@ Enter an optional question in **Cerca con Google Lens** and click **Invia a Lens
 ShakeSearch keeps its chat open and sends the captured PNG directly from Python
 to Google Lens using an HTTP multipart request. It waits for a response containing
 an image-search session, then reads that result in a hidden, isolated renderer
-and transcribes its text and source links into the conversation. The upload does
+and sends its text and source links to the configured Groq API for a concise
+answer to your question. Original source links remain visible in the chat.
+The upload does
 not use a browser file input or a local upload page.
 It does not open the default browser, minimize the chat or close the panel.
 
@@ -152,7 +155,14 @@ pending requests and stops its Lens process, including an unresponsive reader.
 
 With **Usa Lens per le prossime domande** checked, messages in the main input use
 the same image-search session. Uncheck it to return to Groq's AI explanations.
-Lens replies are the text and links read from Google, not AI-generated guesses.
+The chat labels replies interpreted by AI using Lens results. The API receives
+the question, up to 6,000 characters of Lens text, up to eight source links and
+recent Lens conversation context. It is instructed to treat page content as
+untrusted data and explain uncertainty. If the API is unavailable or no
+`GROQ_API_KEY` is configured, the original Lens results appear with an explanation.
+The API call has a 25-second timeout and the chat stops waiting for interpretation
+after 35 seconds. If Lens returns no results, the chat reports the failure
+instead of substituting a generated answer.
 Menus, headers, footers and generic page links are excluded. The reader accepts
 structured result cards, visual matches and recognized answer blocks, rather than
 the full page text. If Google opens its homepage instead of search results, the

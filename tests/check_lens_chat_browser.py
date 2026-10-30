@@ -85,6 +85,27 @@ with sync_playwright() as runner:
         assert 'Dove posso comprarlo?' in replies.nth(1).inner_text()
         assert chat.locator('.chat-msg-ai img').count() == 0
         assert chat.locator('.chat-msg-ai a').count() == 2
+        chat.evaluate('''() => {
+          window.lensAnswerReady = false;
+          pywebview.api.poll_lens = async () => window.lensAnswerReady
+            ? {done: true, result: {ok: true, interpreted: true, text: 'Spiegazione API', links: [{title: 'Fonte Lens', url: 'https://example.org/source'}]}}
+            : {done: false, status: 'Risultati Lens ricevuti. L’AI sta preparando la risposta…'};
+          window.pendingLensAnswer = askLens('Spiegami i risultati');
+        }''')
+        chat.wait_for_function("document.querySelectorAll('.chat-msg-ai')[2].textContent.includes('AI sta preparando')")
+        chat.evaluate('async () => { window.lensAnswerReady = true; await window.pendingLensAnswer; }')
+        assert 'Risposta AI basata sui risultati Lens' in replies.nth(2).inner_text()
+        assert 'Spiegazione API' in replies.nth(2).inner_text()
+        assert replies.nth(2).locator('a').get_attribute('href') == 'https://example.org/source'
+        chat.evaluate('''async () => {
+          window.lensWasCancelled = false;
+          pywebview.api.send_to_lens = async () => {throw new Error('Disconnected bridge');};
+          pywebview.api.cancel_lens = async () => {window.lensWasCancelled = true;};
+          await askLens('Bridge failure');
+        }''')
+        assert 'non ha completato' in replies.nth(3).inner_text()
+        assert chat.evaluate('lensWasCancelled')
+        print('PASS: progress replaces the waiting bubble, API interpretation retains source links, bridge failures terminate the request')
         google = views[0].page
         google.set_content('''<title>Google</title><div role="dialog"><h1>Prima di passare alla Ricerca Google</h1>
             <p>Utilizziamo cookie e dati per fornire i servizi.</p><form>
