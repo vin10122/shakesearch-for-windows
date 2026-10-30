@@ -31,13 +31,22 @@ try:
         page.on('dialog',lambda dialog: (dialogs.append(dialog.message),dialog.dismiss()))
         def receive(route):
             request=route.request
+            target=urlsplit(request.url)
+            if target.hostname == '127.0.0.1':
+                route.continue_()
+                return
+            if target.hostname != 'lens.google.com' or target.path != '/v3/upload':
+                route.abort()
+                return
             captured.append((request.url,request.headers,request.post_data_buffer))
             route.fulfill(status=200,content_type='text/html',body='<html><title>Upload captured</title><body>Simulated Lens receiver</body></html>')
-        page.route('https://lens.google/**',receive)
+        page.route('**/*',receive)
         page.goto(handoff.url)
-        page.wait_for_url('https://lens.google/**')
+        page.wait_for_url('https://lens.google.com/**')
         assert len(captured)==1,captured
         url,headers,body=captured[0]
+        assert urlsplit(url).hostname == 'lens.google.com'
+        assert urlsplit(url).path == '/v3/upload'
         assert parse_qs(urlsplit(url).query)['q']==[question]
         message=BytesParser(policy=policy.default).parsebytes(('Content-Type: '+headers['content-type']+'\r\nMIME-Version: 1.0\r\n\r\n').encode()+body)
         parts={part.get_param('name',header='content-disposition'):part for part in message.iter_parts()}

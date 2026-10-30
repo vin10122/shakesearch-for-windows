@@ -6,10 +6,11 @@ import unittest
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 from urllib.request import Request, ProxyHandler, build_opener
+from urllib.parse import urlsplit
 
 from PIL import Image
 import drawer
-from lens_handoff import LensHandoff, make_page
+from lens_handoff import LENS_UPLOAD_URL, LensHandoff, make_page
 
 
 def image_bytes():
@@ -19,6 +20,12 @@ def image_bytes():
 
 
 class LensHandoffTests(unittest.TestCase):
+    def test_upload_uses_lens_service_host_not_marketing_site(self):
+        target = urlsplit(LENS_UPLOAD_URL)
+        self.assertEqual(target.scheme, 'https')
+        self.assertEqual(target.hostname, 'lens.google.com')
+        self.assertEqual(target.path, '/v3/upload')
+
     def setUp(self):
         self.opener = build_opener(ProxyHandler({}))  # Local loopback only.
 
@@ -37,7 +44,8 @@ class LensHandoffTests(unittest.TestCase):
             self.assertEqual(response.headers['Cache-Control'], 'no-store')
             self.assertEqual(response.headers['Referrer-Policy'], 'no-referrer')
             self.assertIn("frame-ancestors 'none'", response.headers['Content-Security-Policy'])
-        self.assertIn('https://lens.google/v3/upload', html)
+        self.assertIn('https://lens.google.com/v3/upload', html)
+        self.assertNotIn('https://lens.google/v3/upload', html)
         self.assertIn('name="encoded_image"', html)
         self.assertIn('Dove posso comprarlo?', html)
         self.assertIsNone(handoff._page)

@@ -138,6 +138,11 @@ computer until the browser sends it directly to Google; no public image-hosting
 service is used. A temporary, one-use local page handles the transfer and expires
 after two minutes. No Groq key is needed for this option.
 
+The upload target is `https://lens.google.com/v3/upload`, using the service host
+from [Chromium's Lens configuration](https://github.com/chromium/chromium/blob/main/components/lens/lens_features.cc)
+and the upload route in [Chromium's Google image-search template](https://github.com/chromium/chromium/blob/132.0.6834.83/components/search_engines/prepopulated_engines.json).
+The separate `lens.google` site does not provide this upload route.
+
 This integration uses Google's web upload form, not an official Lens API. The
 browser's multipart image-and-question submission has been tested with an
 intercepted destination. **Actual Google results and acceptance of the optional

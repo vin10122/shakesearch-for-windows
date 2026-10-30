@@ -13,7 +13,9 @@ import webbrowser
 
 from PIL import Image
 
-LENS_UPLOAD_URL = 'https://lens.google/v3/upload?ep=gsbubb&hl=it'
+# Chromium's Lens standalone base URL is https://lens.google.com/v3/;
+# its Google image-search template appends "upload". lens.google is not the upload host.
+LENS_UPLOAD_URL = 'https://lens.google.com/v3/upload?ep=gsbubb&hl=it'
 HANDOFF_SECONDS = 120
 
 
@@ -29,7 +31,7 @@ def make_page(image_bytes, question, nonce):
 <style nonce="NONCE">body{font:16px system-ui;background:#201812;color:#fdf8f5;margin:60px auto;max-width:650px;padding:20px}h1{color:#ff944d}a{color:#ffb077;margin-right:20px}p{line-height:1.5}</style>
 </head><body><h1>Invio a Google Lens…</h1>
 <p id="status">Apertura della ricerca nel browser.</p>
-<div id="fallback" hidden><a id="save">Salva immagine</a><a href="https://lens.google/">Apri Google Lens</a>
+<div id="fallback" hidden><a id="save">Salva immagine</a><a href="https://www.google.com/imghp?hl=it">Apri Google Immagini</a>
 <p>Carica l’immagine salvata in Lens. Puoi aggiungere la domanda dopo il caricamento.</p></div>
 <form id="lens" action="UPLOAD_URL" method="post" enctype="multipart/form-data" accept-charset="UTF-8" hidden>
 <input id="image" type="file" name="encoded_image" accept="image/png">
