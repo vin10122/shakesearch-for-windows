@@ -11,7 +11,7 @@ from PySide6.QtCore import QObject, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QMainWindow,
                                QPlainTextEdit, QPushButton, QScrollArea, QSplitter,
-                               QVBoxLayout, QWidget)
+                               QSizeGrip, QVBoxLayout, QWidget)
 
 load_dotenv()
 logger = logging.getLogger('shakesearch')
@@ -110,10 +110,34 @@ class ImagePreview(QScrollArea):
             self.fit_image()
 
 
+class WindowTitleLabel(QLabel):
+    """Draggable title for the dark window chrome."""
+    def mousePressEvent(self, event):
+        self._drag_offset = None
+        if event.button() == Qt.MouseButton.LeftButton:
+            window = self.window()
+            if not window.windowHandle().startSystemMove():
+                self._drag_offset = event.globalPosition().toPoint() - window.pos()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        offset = getattr(self, '_drag_offset', None)
+        if offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            self.window().move(event.globalPosition().toPoint() - offset)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_offset = None
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.window().toggle_maximized()
+
+
 class ImageTextWindow(QMainWindow):
     def __init__(self, image_path=None, *, image_bytes=None):
         super().__init__()
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         # Keep a snapshot: subsequent captures must not change the preview or OCR input.
         self.image_bytes = image_bytes if image_bytes is not None else Path(image_path).read_bytes()
         pixmap = QPixmap()
@@ -139,10 +163,30 @@ class ImageTextWindow(QMainWindow):
             QPlainTextEdit { background: #2c221c; border: 1px solid #754526;
                              border-radius: 8px; padding: 10px; font-size: 15px; }
             QScrollArea { border: 1px solid #754526; border-radius: 8px; }
+            QLabel#windowTitle { color: #ff944d; font-size: 15px; font-weight: bold; }
+            QPushButton#windowClose:hover { background: #8c3328; }
+            QSizeGrip { background: #201812; width: 16px; height: 16px; }
         ''')
         root = QWidget()
         layout = QVBoxLayout(root)
         layout.setContentsMargins(18, 18, 18, 18)
+        title_bar = QHBoxLayout()
+        title = WindowTitleLabel('ShakeSearch · Immagine e testo')
+        title_bar.addWidget(title, 1)
+        self.minimize_button = QPushButton('−')
+        self.minimize_button.setToolTip('Riduci a icona')
+        self.minimize_button.clicked.connect(self.showMinimized)
+        self.maximize_button = QPushButton('□')
+        self.maximize_button.setToolTip('Ingrandisci / Ripristina')
+        self.maximize_button.clicked.connect(self.toggle_maximized)
+        self.close_button = QPushButton('×')
+        self.close_button.setObjectName('windowClose')
+        self.close_button.setToolTip('Chiudi')
+        self.close_button.clicked.connect(self.close)
+        for button in (self.minimize_button, self.maximize_button, self.close_button):
+            button.setFixedSize(38, 34)
+            title_bar.addWidget(button)
+        layout.addLayout(title_bar)
         self.status = QLabel('Lettura del testo…')
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
@@ -178,11 +222,21 @@ class ImageTextWindow(QMainWindow):
         self.copy.setEnabled(False)
         self.copy.clicked.connect(self.copy_text)
         controls.addWidget(self.copy)
+        controls.addWidget(QSizeGrip(self))
         layout.addLayout(controls)
         self.text.textChanged.connect(lambda: self.copy.setEnabled(bool(self.text.toPlainText())))
         self.setCentralWidget(root)
         QTimer.singleShot(0, self.preview.fit_image)
         QTimer.singleShot(0, self.start_recognition)
+
+    @Slot()
+    def toggle_maximized(self):
+        if self.isMaximized():
+            self.showNormal()
+            self.maximize_button.setText('□')
+        else:
+            self.showMaximized()
+            self.maximize_button.setText('▣')
 
     @Slot()
     def start_recognition(self):
