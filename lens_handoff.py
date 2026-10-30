@@ -71,6 +71,7 @@ class LensHandoff:
         if not isinstance(question, str) or len(question) > 500:
             raise ValueError('La domanda deve contenere al massimo 500 caratteri.')
         self.closed = False
+        self._delivered = threading.Event()
         self._lock = threading.Lock()
         self._nonce = secrets.token_urlsafe(24)
         self._path = '/' + secrets.token_urlsafe(24)
@@ -102,6 +103,8 @@ class LensHandoff:
                     'https://www.google.com https://consent.google.com')
                 self.end_headers()
                 self.wfile.write(page)
+                self.wfile.flush()
+                owner._delivered.set()
 
             def log_message(self, *args):
                 pass  # Do not write image-bearing URLs or questions into access logs.
@@ -113,6 +116,10 @@ class LensHandoff:
     @property
     def url(self):
         return f'http://127.0.0.1:{self._server.server_port}{self._path}'
+
+    def wait_for_delivery(self, timeout=15):
+        """Wait until the browser has the complete, self-contained image page."""
+        return self._delivered.wait(timeout)
 
     def open(self):
         self._thread = threading.Thread(target=self._server.serve_forever,

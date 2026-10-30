@@ -44,6 +44,9 @@ try:
         page.goto(handoff.url)
         page.wait_for_url('https://lens.google.com/**')
         assert len(captured)==1,captured
+        assert handoff.wait_for_delivery(timeout=1)
+        # The local sender can stop now without affecting the browser's upload.
+        handoff.close()
         url,headers,body=captured[0]
         assert urlsplit(url).hostname == 'lens.google.com'
         assert urlsplit(url).path == '/v3/upload'

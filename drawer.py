@@ -564,6 +564,14 @@ class DrawerApi:
                         window.on_top = False
                         window.minimize()
                     handoff.open()
+                    if window:
+                        if not handoff.wait_for_delivery(timeout=15):
+                            raise RuntimeError('The browser did not receive the Lens image page')
+                        # The browser now owns all image bytes and needs no more
+                        # local resources. Only this drawer process is closed;
+                        # the main capture listener remains running independently.
+                        handoff.close()
+                        window.destroy()
                 except Exception:
                     handoff.close()
                     if window:

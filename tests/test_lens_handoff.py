@@ -39,6 +39,7 @@ class LensHandoffTests(unittest.TestCase):
 
     def test_page_delivered_once_and_contains_direct_browser_upload(self):
         handoff = self.handoff('Dove posso comprarlo?')
+        self.assertFalse(handoff.wait_for_delivery(timeout=0))
         with self.opener.open(handoff.url, timeout=2) as response:
             html = response.read().decode()
             self.assertEqual(response.headers['Cache-Control'], 'no-store')
@@ -49,6 +50,7 @@ class LensHandoffTests(unittest.TestCase):
         self.assertIn('name="encoded_image"', html)
         self.assertIn('Dove posso comprarlo?', html)
         self.assertIsNone(handoff._page)
+        self.assertTrue(handoff.wait_for_delivery(timeout=1))
         with self.assertRaises(HTTPError) as error:
             self.opener.open(handoff.url, timeout=2)
         self.assertEqual(error.exception.code, 410)
@@ -114,17 +116,33 @@ class DrawerLensTests(unittest.TestCase):
             self.assertFalse(self.api.send_to_lens()['ok'])
         factory.assert_not_called()
 
-    def test_drawer_is_lowered_before_browser_opens(self):
+    def test_drawer_closes_only_after_browser_receives_the_image(self):
         window = Mock(on_top=True)
         with patch.object(drawer, 'GLOBAL_WINDOW', window), patch.object(drawer, 'LensHandoff') as factory:
             factory.return_value.closed = False
             def opened():
                 self.assertFalse(window.on_top)
                 window.minimize.assert_called_once()
+                window.destroy.assert_not_called()
             factory.return_value.open.side_effect = opened
+            def delivered(timeout):
+                window.destroy.assert_not_called()
+                return True
+            factory.return_value.wait_for_delivery.side_effect = delivered
             self.assertEqual(self.api.send_to_lens(), dict(ok=True))
         window.restore.assert_not_called()
+        factory.return_value.wait_for_delivery.assert_called_once_with(timeout=15)
+        factory.return_value.close.assert_called_once()
+        window.destroy.assert_called_once()
+
+    def test_drawer_stays_available_when_browser_never_receives_image(self):
+        window = Mock(on_top=True)
+        with patch.object(drawer, 'GLOBAL_WINDOW', window), patch.object(drawer, 'LensHandoff') as factory, self.assertLogs('shakesearch', level='ERROR'):
+            factory.return_value.wait_for_delivery.return_value = False
+            self.assertFalse(self.api.send_to_lens()['ok'])
         window.destroy.assert_not_called()
+        window.restore.assert_called_once()
+        self.assertTrue(window.on_top)
 
     def test_drawer_is_restored_when_browser_launch_fails(self):
         window = Mock(on_top=True)

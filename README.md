@@ -136,8 +136,9 @@ Enter an optional question in **Cerca con Google Lens**, then click **Invia a Le
 ShakeSearch minimizes its chat panel and opens a separate browser window for
 Google Lens. On Windows, Chrome, Edge, Firefox, Brave and Vivaldi receive an explicit
 new-window command, and ShakeSearch requests foreground focus for the new window.
-You do not need to close the capture panel yourself. If browser launch fails, the
-chat panel is restored. Other browser handlers receive a standard new-window request,
+Once the browser has received the complete image page, the chat panel closes
+automatically. ShakeSearch keeps running in the background for the next capture.
+If the browser fails to open or receive the image, the chat panel is restored. Other browser handlers receive a standard new-window request,
 which they may choose to handle as a tab. The browser prepares an automatic image upload to
 Google Lens. The question is included in the request. The capture stays on your
 computer until the browser sends it directly to Google; no public image-hosting
