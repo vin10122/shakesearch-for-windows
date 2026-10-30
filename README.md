@@ -13,11 +13,19 @@ ShakeSearch lets you select any area of your screen by shaking your mouse or pre
 - A text input to ask custom questions about the selection
 - An option to copy the captured image
 
-It is inspired by Circle to Search on Android and Magic Pointer on Googlebook OS, but it is an independent project with no affiliation with Google.
+Circle to Search is Google's visual search feature for supported Android phones. It lets you circle, highlight, scribble over or tap something on the screen to search for it with Google without leaving the app you are using.
+
+Google explains the original Android feature in its [introduction to Circle to Search](https://blog.google/products/search/google-circle-to-search-android/). ShakeSearch takes inspiration from its screen selection gesture and is developed independently of Google.
+
+ShakeSearch currently provides AI-generated explanations and answers about the selected content. It does not yet search the web for products, articles or matching images. **Image search is coming soon.**
 
 It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to understand what is on your screen.
 
 **This is experimental software.** It is provided as-is without warranty. Use it at your own risk. The project is not affiliated with, endorsed by, or connected to Google LLC or any of its products.
+
+## What you can use it for
+
+Use ShakeSearch when you want help with something you see on your screen. Circle a picture to ask what it shows, select an error message to ask for help, or extract text from a screenshot instead of typing it again. You can also copy a selected part of the screen to paste into another app. If your selection is not quite right, adjust its edges before confirming. You do not need to draw a perfect shape.
 
 ## Requirements
 
