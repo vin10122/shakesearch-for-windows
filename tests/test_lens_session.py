@@ -11,6 +11,31 @@ SNAPSHOT = dict(url=URL, title='Google Lens', text='Results read from Lens, not 
 
 
 class LensSessionTests(unittest.TestCase):
+    def test_question_is_restored_before_waiting_for_image_results(self):
+        location = ['https://www.google.com/imghp?hl=it']
+        window = Mock()
+        window.get_current_url.side_effect = lambda: location[0]
+        window.load_url.side_effect = lambda url: location.__setitem__(0, url)
+        def snapshot(script):
+            if '/imghp' in location[0]:
+                return dict(url=location[0], complete=True, landing=True, text='')
+            if parse_qs(urlsplit(location[0]).query).get('q'):
+                return dict(SNAPSHOT, url=location[0])
+            return dict(url=location[0], complete=True, searchPage=True, text='', resultCount=0)
+        window.evaluate_js.side_effect = snapshot
+        def factory(title, **options):
+            location[0] = options['url']
+            return window
+        session = LensSession(b'image', window_factory=factory, visible=True, timeout=6)
+        clock = [0]
+        with patch.object(session, '_upload_in_browser', side_effect=lambda: location.__setitem__(0, URL)), \
+             patch('lens_session.time.monotonic', side_effect=lambda: clock[0]), \
+             patch('lens_session.time.sleep', side_effect=lambda _: clock.__setitem__(0, clock[0] + 1)):
+            answer = session.query('Cos’è? & dettagli')
+        self.assertEqual(answer['text'], SNAPSHOT['text'])
+        self.assertEqual(parse_qs(urlsplit(location[0]).query)['q'], ['Cos’è? & dettagli'])
+        self.assertEqual(parse_qs(urlsplit(location[0]).query)['p'], ['IMAGE_SESSION'])
+
     def test_visible_lens_uploads_in_same_window_and_stays_open_for_results(self):
         window = Mock()
         window.get_current_url.return_value = URL

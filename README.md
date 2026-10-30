@@ -158,6 +158,9 @@ captured image from that same browser session, reads the resulting text and
 source links, and sends them to the configured Groq API for interpretation.
 The Lens window stays visible, including after results arrive, so you can
 interact with Google directly. The chat and original source links remain available.
+Your optional question is included in the image upload. If Google's consent
+redirect removes it, ShakeSearch reapplies it as soon as the image-search session
+exists, without waiting for image-only results to finish loading.
 
 Lens runs in a separate process with one internal window created at startup.
 The chat submits requests and checks their progress without waiting inside its

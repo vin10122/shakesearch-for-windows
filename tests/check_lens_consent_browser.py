@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import sys
+from email.parser import BytesParser
+from email import policy
 from urllib.parse import parse_qs, urlencode, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PIL import Image
@@ -19,7 +21,7 @@ with sync_playwright() as runner:
     browser = runner.chromium.launch(executable_path=os.getenv('CHROMIUM_EXECUTABLE') or None,
                                     headless=True, args=['--no-sandbox'])
     context = browser.new_context()
-    views, uploads = [], []
+    views, uploads, upload_questions = [], [], []
     def route_google(route):
         request = route.request
         target = urlsplit(request.url)
@@ -45,10 +47,24 @@ with sync_playwright() as runner:
             assert request.method == 'POST'
             assert b'\x89PNG' in request.post_data_buffer
             assert request.headers.get('origin') == 'https://www.google.com'
+            multipart = BytesParser(policy=policy.default).parsebytes(
+                ('Content-Type: ' + request.headers['content-type'] + '\r\nMIME-Version: 1.0\r\n\r\n').encode()
+                + request.post_data_buffer)
+            fields = {part.get_param('name', header='content-disposition'): part.get_payload(decode=True)
+                      for part in multipart.iter_parts()}
+            question = parse_qs(target.query).get('q', [''])[0]
+            assert fields.get('q', b'').decode('utf-8') == question
+            upload_questions.append(question)
             uploads.append(request.post_data_buffer)
+            # Simulate Google losing q during consent. An image-only page has
+            # no readable cards until the application restores the question.
             redirect('https://lens.google.com/search?p=CONSENTED_IMAGE')
         elif target.hostname == 'lens.google.com' and target.path == '/search':
             assert accepted
+            if upload_questions[-1] and not parse_qs(target.query).get('q'):
+                route.fulfill(status=200, content_type='text/html; charset=utf-8',
+                              body='<title>Google Lens</title><main>Preparing visual results…</main>')
+                return
             question = parse_qs(target.query).get('q', ['Ricerca immagine'])[0]
             route.fulfill(status=200, content_type='text/html; charset=utf-8', body=f'''
                 <title>Google Lens</title><main><article><h3>Immagine trovata</h3><p>{html.escape(question)}</p>
@@ -80,8 +96,9 @@ with sync_playwright() as runner:
         raise ConsentRequired(CONSENT)
     session = LensSession(image.getvalue(), window_factory=View, uploader=blocked_upload, timeout=10)
     try:
-        answer = session.query('Spiega questa immagine')
-        assert 'Spiega questa immagine' in answer['text']
+        answer = session.query('Spiega questa immagine: è "caffè" & tè?')
+        assert 'Spiega questa immagine: è "caffè" & tè?' in answer['text']
+        assert upload_questions[-1] == 'Spiega questa immagine: è "caffè" & tè?'
         assert len(views) == 1 and views[0].show_count == 1 and len(uploads) == 1
         second = session.query('E questo dettaglio?')
         assert 'E questo dettaglio?' in second['text']
@@ -106,6 +123,7 @@ with sync_playwright() as runner:
         assert 'Spiega il risultato visibile' in result['text']
         assert len(views) == 3 and len(uploads) == 3
         assert views[2].show_count >= 1 and not views[2].page.is_closed()
+        assert upload_questions[-1] == 'Spiega il risultato visibile'
         print('PASS: clicking Lens opens the visible window, consent and upload use that context, results stay open')
     finally:
         visible_session.close()

@@ -158,6 +158,7 @@ class LensSession:
         self._cancelled = threading.Event()
         self._lock = threading.Lock()
         self._closed = threading.Event()
+        self._question = ''
 
     def _navigate(self, target):
         if not google_url(target):
@@ -206,7 +207,10 @@ class LensSession:
             output = io.BytesIO()
             image.save(output, 'PNG')
             payload = dict(image=base64.b64encode(output.getvalue()).decode('ascii'),
-                           width=image.width, height=image.height, target=google_language_url(LENS_UPLOAD_URL, self.language))
+                           width=image.width, height=image.height, question=self._question,
+                           target=google_language_url(LENS_UPLOAD_URL, self.language))
+        if self._question:
+            payload['target'] = followup_url(payload['target'], self._question)
         data = json.dumps(payload).replace('<', '\\u003c')
         script = r'''(() => {
           if (location.protocol !== 'https:' || !['www.google.com', 'lens.google.com'].includes(location.hostname))
@@ -217,10 +221,13 @@ class LensSession:
           transfer.items.add(new File([bytes], 'shakesearch.png', {type:'image/png'}));
           const form = document.createElement('form');
           form.method = 'POST'; form.action = payload.target; form.enctype = 'multipart/form-data';
+          form.acceptCharset = 'UTF-8';
           const file = document.createElement('input'); file.type = 'file'; file.name = 'encoded_image';
           file.files = transfer.files; form.appendChild(file);
           if (file.files.length !== 1) return {ok:false};
-          for (const [name,value] of Object.entries({image_url:'',original_width:payload.width,original_height:payload.height})) {
+          const fields = {image_url:'',original_width:payload.width,original_height:payload.height};
+          if (payload.question) fields.q = payload.question;
+          for (const [name,value] of Object.entries(fields)) {
             const field = document.createElement('input'); field.type = 'hidden'; field.name = name;
             field.value = String(value); form.appendChild(field);
           }
@@ -238,6 +245,7 @@ class LensSession:
             raise ValueError('Scrivi una domanda di massimo 500 caratteri.')
         with self._lock:
             self.language = get_language()
+            self._question = question
             if self._closed.is_set():
                 raise RuntimeError('La sessione Lens è stata chiusa.')
             self._cancelled.clear()
@@ -263,15 +271,9 @@ class LensSession:
                         raise RuntimeError('Google Lens non ha confermato una ricerca associata all’immagine.')
                     self._image_result_url = target
                     self._navigate(followup_url(target, question) if question else target)
-            result = self._read_results(allow_upload=browser_upload)
-            # An image posted after consent is first identified without a text
-            # query. Apply the optional question after the visual session exists.
-            if (browser_upload or self._in_view_upload) and question:
-                self._navigate(followup_url(self.result_url, question))
-                result = self._read_results()
-            return result
+            return self._read_results(allow_upload=browser_upload, question=question)
 
-    def _read_results(self, allow_upload=False):
+    def _read_results(self, allow_upload=False, question=''):
         deadline = time.monotonic() + self.timeout
         previous = None
         landing_since = None
@@ -281,6 +283,7 @@ class LensSession:
         revealed = False
         read_error_logged = False
         consent_deadline = None
+        question_navigation_done = False
         if self._consent_visible or self.visible:
             deadline = time.monotonic() + 180
         while time.monotonic() < deadline and not self._closed.is_set() and not self._cancelled.is_set():
@@ -305,6 +308,17 @@ class LensSession:
             if not isinstance(snapshot, dict) or not google_url(snapshot.get('url')):
                 time.sleep(.25)
                 continue
+            # Consent redirects can drop q from the original multipart upload.
+            # Restore it as soon as the image session exists, including while
+            # the result DOM is still empty. Never read the image-only answer
+            # first or repeatedly navigate if Google ignores the parameter.
+            if allow_upload and question and not question_navigation_done and is_image_result_url(snapshot['url']):
+                self._image_result_url = snapshot['url']
+                question_navigation_done = True
+                if dict(parse_qsl(urlsplit(snapshot['url']).query)).get('q') != question:
+                    self._navigate(followup_url(snapshot['url'], question))
+                    previous = None
+                    continue
             state = classify(snapshot)
             if state != last_state:
                 parsed = urlsplit(snapshot['url'])
