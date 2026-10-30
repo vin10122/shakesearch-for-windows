@@ -19,10 +19,6 @@ It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to un
 
 **This is experimental software.** It is provided as-is without warranty. Use it at your own risk. The project is not affiliated with, endorsed by, or connected to Google LLC or any of its products.
 
-## Safe name
-
-The project name "ShakeSearch" was chosen to avoid any trademark conflict. Circle to Search and Magic Pointer are trademarks of Google LLC. This project is not affiliated with, endorsed by, or connected to Google LLC or any of its products.
-
 ## Requirements
 
 - Windows 10 or Windows 11
