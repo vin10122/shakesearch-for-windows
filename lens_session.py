@@ -80,6 +80,13 @@ READ_RESULTS = r'''(() => {
     if (text.length >= 40 && !answers.includes(text)) answers.push(text);
   }
   const context = document.body?.innerText.slice(0, 4000) || '';
+  // Google also embeds consent in a dialog on www.google.com, without
+  // navigating to consent.google.com. Inspect controls separately from results.
+  const controls = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"]'))
+    .filter(node => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden')
+    .map(node => (node.innerText || node.value || node.getAttribute('aria-label') || '').trim());
+  const inlineConsent = /before you continue|prima di continuare|prima di passare|we use cookies|utilizziamo cookie/i.test(document.body?.innerText || '') &&
+    controls.some(text => /accept all|reject all|accetta tutto|rifiuta tutto|i agree|accetto/i.test(text));
   const url = new URL(location.href);
   const searchPage = /^\/(search|v3\/search)(\/|$)/.test(url.pathname) ||
     (url.hostname === 'lens.google.com' && Boolean(document.querySelector('[data-lpage], [data-docid]')));
@@ -88,7 +95,7 @@ READ_RESULTS = r'''(() => {
           resultCount: cards.length, answerCount: answers.length, searchPage,
           landing: ['/', '/webhp', '/imghp'].includes(url.pathname),
           uploadPrompt: Boolean(document.querySelector('input[type="file"]')) && /drag an image|trascina un'immagine|carica un file|upload a file/i.test(context),
-          verification: /unusual traffic|traffico insolito|verify you are human|verifica di essere umano/i.test(context),
+          verification: inlineConsent || /unusual traffic|traffico insolito|verify you are human|verifica di essere umano/i.test(context),
           interactiveChallenge: Array.from(document.querySelectorAll('button, [role="button"], input:not([type="hidden"]), iframe[src*="recaptcha"]'))
             .some(node => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden'),
           complete: document.readyState === 'complete'};
@@ -175,7 +182,7 @@ class LensSession:
             self.close()
             raise RuntimeError('La sessione Lens è stata chiusa.')
 
-    def _show_consent(self):
+    def _show_consent(self, verification=True):
         if not self._consent_visible:
             if self._consent_rounds >= 1:
                 raise RuntimeError('Google continua a richiedere il consenso. Non posso completare automaticamente questa ricerca.')
@@ -183,7 +190,8 @@ class LensSession:
             self._consent_visible = True
             self.window.on_top = True
             self.window.show()
-            self.status('Completa il consenso nella finestra Google. Riprenderò automaticamente da quella stessa sessione.')
+            self.status('Completa il consenso nella finestra Google. Riprenderò automaticamente da quella stessa sessione.'
+                        if verification else 'Lens non ha ancora fornito risultati leggibili. Mostro la stessa finestra Google e continuo ad attendere la risposta.')
 
     def _upload_in_browser(self):
         # Execute only on Google's own origin, after the user's consent. The
@@ -262,6 +270,8 @@ class LensSession:
         last_state = None
         uploaded_in_view = False
         upload_navigation_done = False
+        revealed = False
+        read_error_logged = False
         if self._consent_visible:
             deadline = time.monotonic() + 180
         while time.monotonic() < deadline and not self._closed.is_set() and not self._cancelled.is_set():
@@ -278,6 +288,9 @@ class LensSession:
             except RuntimeError:
                 raise
             except Exception:
+                if not read_error_logged:
+                    logger.exception('Lens DOM read failed during navigation')
+                    read_error_logged = True
                 time.sleep(.25)  # Navigation may temporarily invalidate the WebView document.
                 continue
             if not isinstance(snapshot, dict) or not google_url(snapshot.get('url')):
@@ -303,7 +316,7 @@ class LensSession:
                     deadline = time.monotonic() + 180
                 allow_upload = True
                 uploaded_in_view = False
-            elif self._consent_visible:
+            elif self._consent_visible and state != 'loading':
                 # Consent has finished in this exact WebView/cookie context.
                 self.window.hide()
                 self.window.on_top = False
@@ -345,6 +358,13 @@ class LensSession:
                 previous = signature
             else:
                 previous = None
+            # A hidden WebView may defer rendering, or Google may use a new
+            # challenge layout. Reuse the existing window once, rather than
+            # silently timing out without ever showing what needs attention.
+            if state == 'loading' and not self._consent_visible and not revealed and time.monotonic() >= deadline - 5:
+                self._show_consent(verification=False)
+                revealed = True
+                deadline = time.monotonic() + 180
             time.sleep(.35)
         if self._closed.is_set():
             raise RuntimeError('La sessione Lens è stata chiusa.')
@@ -352,7 +372,7 @@ class LensSession:
         if self._cancelled.is_set():
             raise RuntimeError('La finestra Google è stata chiusa prima di completare la ricerca. Puoi riprovare.')
         if self._consent_visible:
-            raise RuntimeError('Consenso Google non completato. Completa la finestra aperta e riprova.')
+            raise RuntimeError('Google non ha fornito risultati leggibili. Controlla la pagina nella finestra Lens aperta, completa eventuali verifiche e riprova.')
         raise RuntimeError('Non sono riuscito a leggere risultati reali da Lens. Google potrebbe richiedere una verifica o aver cambiato la pagina.')
 
     def close(self):

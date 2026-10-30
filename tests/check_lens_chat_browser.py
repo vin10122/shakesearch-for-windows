@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PIL import Image
 from playwright.sync_api import sync_playwright
-from lens_session import LensSession
+from lens_session import LensSession, READ_RESULTS, classify
 from lens_upload import upload_image
 import drawer
 
@@ -85,6 +85,15 @@ with sync_playwright() as runner:
         assert 'Dove posso comprarlo?' in replies.nth(1).inner_text()
         assert chat.locator('.chat-msg-ai img').count() == 0
         assert chat.locator('.chat-msg-ai a').count() == 2
+        google = views[0].page
+        google.set_content('''<title>Google</title><div role="dialog"><h1>Prima di passare alla Ricerca Google</h1>
+            <p>Utilizziamo cookie e dati per fornire i servizi.</p><form>
+            <button>Rifiuta tutto</button><button>Accetta tutto</button></form></div>''')
+        assert classify(google.evaluate(READ_RESULTS)) == 'verification'
+        google.set_content('''<title>Google</title><main><h3>Cookie documentation</h3></main>
+            <div hidden>Prima di continuare <button>Accetta tutto</button></div>''')
+        assert classify(google.evaluate(READ_RESULTS)) != 'verification'
+        print('PASS: inline Google consent is detected without mistaking hidden consent controls for a challenge')
         print('PASS: direct Python upload before any WebView, hidden results reading, image-session follow-ups and safe chat replies')
     finally:
         session.close()

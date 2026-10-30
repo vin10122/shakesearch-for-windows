@@ -164,6 +164,11 @@ The hidden Google reader has no access to ShakeSearch's application API. It stay
 hidden during normal searches. If Google requires consent, access or a human
 verification, ShakeSearch shows that same internal window once and waits for your
 choice. It never chooses a consent option or solves a verification for you.
+Consent dialogs embedded in the Google results page are detected as well. The
+window stays visible through loading redirects until a readable page arrives.
+If the hidden reader cannot identify results before its initial timeout, it shows
+the same window once and keeps reading for up to three more minutes, allowing
+you to see and complete an unrecognized Google prompt.
 
 After you finish, ShakeSearch keeps the authorized WebView session, hides the
 window and automatically submits the selected image from Google's own page if

@@ -11,6 +11,40 @@ SNAPSHOT = dict(url=URL, title='Google Lens', text='Results read from Lens, not 
 
 
 class LensSessionTests(unittest.TestCase):
+    def test_consent_window_stays_visible_while_redirect_is_loading(self):
+        window = Mock()
+        window.get_current_url.return_value = URL
+        loading = dict(url=URL, complete=False, text='')
+        snapshots = iter([dict(SNAPSHOT, url='https://consent.google.com/m'), loading,
+                          loading, SNAPSHOT, SNAPSHOT, SNAPSHOT])
+        current = {}
+        def read(script):
+            current.update(snapshot=next(snapshots))
+            return current['snapshot']
+        def hide():
+            self.assertTrue(current['snapshot']['complete'], 'Consent window hidden during loading')
+        window.evaluate_js.side_effect = read
+        window.hide.side_effect = hide
+        session = LensSession(b'image', window_factory=Mock(return_value=window), uploader=Mock(return_value=URL))
+        with patch('lens_session.time.sleep'):
+            self.assertEqual(session.query()['text'], SNAPSHOT['text'])
+        window.show.assert_called_once()
+
+    def test_hidden_reader_without_results_is_revealed_once_and_resumes(self):
+        window = Mock()
+        window.get_current_url.return_value = URL
+        visible = [False]
+        clock = [0]
+        window.show.side_effect = lambda: visible.__setitem__(0, True)
+        window.evaluate_js.side_effect = lambda script: SNAPSHOT if visible[0] else dict(url=URL, complete=True, text='')
+        session = LensSession(b'image', window_factory=Mock(return_value=window),
+                              uploader=Mock(return_value=URL), timeout=10)
+        with patch('lens_session.time.monotonic', side_effect=lambda: clock[0]), \
+             patch('lens_session.time.sleep', side_effect=lambda value: clock.__setitem__(0, clock[0] + 3)):
+            self.assertEqual(session.query()['text'], SNAPSHOT['text'])
+        window.show.assert_called_once()
+        window.hide.assert_called()
+
     def test_followup_preserves_image_session_and_replaces_question(self):
         target = followup_url(URL + '&q=old', 'Dove si compra?')
         params = parse_qs(urlsplit(target).query)
