@@ -2,13 +2,15 @@
 import math
 
 from PIL import Image
-from PySide6.QtCore import Qt, QRectF, QPointF, QElapsedTimer, QTimer
+from PySide6.QtCore import Qt, QRectF, QPointF, QElapsedTimer, QTimer, QThreadPool, Slot
 from PySide6.QtGui import QColor, QConicalGradient, QImage, QPainter, QPainterPath, QPen, QFont, QRegion
 from PySide6.QtWidgets import QWidget
+from rectangle_snap import RectangleSnapTask
 
 AMBER = QColor('#ff944d')
 ANIMATION_MS = 2800
 FRAME_INTERVAL_MS = 7  # About 144 updates/s; actual presentation depends on the display.
+MIN_SELECTION_SIZE = 25
 
 
 def plasma_state(progress):
@@ -39,6 +41,14 @@ class AnimatedScreenOverlay(QWidget):
         self.points = []
         self.drawing = False
         self.pending_bbox = None
+        self._resize_edge = None
+        self._resize_origin = None
+        self._resize_start = None
+        self.snapped = False
+        self._snap_token = 0
+        self._snap_pending = False
+        self._confirm_after_snap = False
+        self._snap_tasks = {}
         self.clock = QElapsedTimer()
         self.progress = 0.0
         self.border_phase = 0.0
@@ -147,38 +157,156 @@ class AnimatedScreenOverlay(QWidget):
         if self.pending_bbox is not None:
             painter.setPen(QPen(AMBER, 2, Qt.PenStyle.DashLine))
             painter.drawRect(self.pending_bbox)
+            painter.setPen(QPen(AMBER, 1.5))
+            painter.setBrush(QColor('#251910'))
+            for point in self.selection_handles().values():
+                painter.drawRoundedRect(QRectF(point.x() - 4, point.y() - 4, 8, 8), 2, 2)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
             badge = QRectF(0, 0, min(400, self.width() - 24), 38)
             badge.moveCenter(QPointF(self.width() / 2, self.height() - 42))
             painter.fillRect(badge, QColor('#201610'))
             painter.setPen(Qt.GlobalColor.white)
-            painter.drawText(badge, Qt.AlignmentFlag.AlignCenter,
-                             'Enter to confirm · Esc to retry')
+            caption = 'Drag edges to adjust · Enter to confirm'
+            if self._snap_pending:
+                caption = 'Aligning selection… · Esc to retry'
+            painter.drawText(badge, Qt.AlignmentFlag.AlignCenter, caption)
         painter.end()
+
+    def selection_handles(self):
+        box = self.pending_bbox
+        if box is None:
+            return {}
+        return {
+            'lt': box.topLeft(), 'rt': box.topRight(),
+            'rb': box.bottomRight(), 'lb': box.bottomLeft(),
+            't': QPointF(box.center().x(), box.top()),
+            'r': QPointF(box.right(), box.center().y()),
+            'b': QPointF(box.center().x(), box.bottom()),
+            'l': QPointF(box.left(), box.center().y()),
+        }
+
+    def resize_edge_at(self, point):
+        box = self.pending_bbox
+        if box is None:
+            return None
+        # Corners and midpoint handles have generous hit areas in logical pixels.
+        handles = sorted(self.selection_handles().items(),
+                         key=lambda item: (point - item[1]).manhattanLength())
+        for edge, center in handles:
+            if abs(point.x() - center.x()) <= 9 and abs(point.y() - center.y()) <= 9:
+                return edge
+        if box.top() <= point.y() <= box.bottom():
+            if abs(point.x() - box.left()) <= 7:
+                return 'l'
+            if abs(point.x() - box.right()) <= 7:
+                return 'r'
+        if box.left() <= point.x() <= box.right():
+            if abs(point.y() - box.top()) <= 7:
+                return 't'
+            if abs(point.y() - box.bottom()) <= 7:
+                return 'b'
+        return None
+
+    def update_resize_cursor(self, point):
+        edge = self._resize_edge or self.resize_edge_at(point)
+        cursors = {'l': Qt.CursorShape.SizeHorCursor, 'r': Qt.CursorShape.SizeHorCursor,
+                   't': Qt.CursorShape.SizeVerCursor, 'b': Qt.CursorShape.SizeVerCursor,
+                   'lt': Qt.CursorShape.SizeFDiagCursor, 'rb': Qt.CursorShape.SizeFDiagCursor,
+                   'rt': Qt.CursorShape.SizeBDiagCursor, 'lb': Qt.CursorShape.SizeBDiagCursor}
+        self.setCursor(cursors.get(edge, Qt.CursorShape.CrossCursor))
+
+    def resize_selection(self, point):
+        box = QRectF(self._resize_origin)
+        delta = point - self._resize_start
+        if 'l' in self._resize_edge:
+            box.setLeft(max(0, min(box.right() - MIN_SELECTION_SIZE, box.left() + delta.x())))
+        if 'r' in self._resize_edge:
+            box.setRight(min(self.width(), max(box.left() + MIN_SELECTION_SIZE, box.right() + delta.x())))
+        if 't' in self._resize_edge:
+            box.setTop(max(0, min(box.bottom() - MIN_SELECTION_SIZE, box.top() + delta.y())))
+        if 'b' in self._resize_edge:
+            box.setBottom(min(self.height(), max(box.top() + MIN_SELECTION_SIZE, box.bottom() + delta.y())))
+        self.pending_bbox = box
+        self.update()
 
     def mousePressEvent(self, event):
         if event.button() != Qt.MouseButton.LeftButton:
             return
         self.setFocus()
+        edge = self.resize_edge_at(event.position())
+        self.reset_snap()
+        self._resize_edge = edge
+        if edge is not None:
+            self._resize_origin = QRectF(self.pending_bbox)
+            self._resize_start = event.position()
+            self.update_resize_cursor(event.position())
+            self.update()
+            return
         self.pending_bbox = None
         self.points = [event.position()]
         self.drawing = True
         self.update()
 
     def mouseMoveEvent(self, event):
-        if self.drawing:
+        if self._resize_edge is not None:
+            self.resize_selection(event.position())
+        elif self.drawing:
             self.points.append(event.position())
             self.update()
+        else:
+            self.update_resize_cursor(event.position())
 
     def mouseReleaseEvent(self, event):
-        if event.button() != Qt.MouseButton.LeftButton or not self.drawing:
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+        if self._resize_edge is not None:
+            self.resize_selection(event.position())
+            self._resize_edge = None
+            self.update_resize_cursor(event.position())
+            # Manual refinements must not trigger another automatic snap.
+            return
+        if not self.drawing:
             return
         self.points.append(event.position())
         self.drawing = False
         xs, ys = [p.x() for p in self.points], [p.y() for p in self.points]
         bbox = QRectF(QPointF(min(xs), min(ys)), QPointF(max(xs), max(ys)))
         bbox = bbox.intersected(QRectF(self.rect()))
-        self.pending_bbox = bbox if bbox.width() >= 25 and bbox.height() >= 25 else None
+        self.pending_bbox = bbox if bbox.width() >= MIN_SELECTION_SIZE and bbox.height() >= MIN_SELECTION_SIZE else None
+        if self.pending_bbox is not None and not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            self._snap_pending = True
+            task = RectangleSnapTask(self._snap_token, self.background.toImage(),
+                                     self.pending_bbox, (self.width(), self.height()))
+            self._snap_tasks[self._snap_token] = task
+            task.signals.finished.connect(self.apply_snap)
+            QThreadPool.globalInstance().start(task)
         self.update()
+
+    def reset_snap(self):
+        # Results from an older gesture must never replace a newer selection.
+        self._snap_token += 1
+        self._snap_pending = False
+        self._confirm_after_snap = False
+        self.snapped = False
+
+    @Slot(int, object)
+    def apply_snap(self, token, rectangle):
+        self._snap_tasks.pop(token, None)
+        if token != self._snap_token or self.pending_bbox is None:
+            return
+        self._snap_pending = False
+        if rectangle is not None:
+            self.pending_bbox = rectangle
+            self.snapped = True
+        self.update()
+        if self._confirm_after_snap:
+            self._confirm_after_snap = False
+            self.confirm_selection()
+
+    def confirm_selection(self):
+        image = self.selected_image()
+        if image is not None:
+            self.manager.on_confirm_crop(image, self.screen_data)
 
     def selected_image(self):
         if self.pending_bbox is None:
@@ -194,11 +322,17 @@ class AnimatedScreenOverlay(QWidget):
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            image = self.selected_image()
-            if image is not None:
-                self.manager.on_confirm_crop(image, self.screen_data)
+            if self._resize_edge is not None:
+                return
+            if self._snap_pending:
+                self._confirm_after_snap = True
+            else:
+                self.confirm_selection()
         elif event.key() == Qt.Key.Key_Escape:
             if self.pending_bbox is not None:
+                self._resize_edge = None
+                self.setCursor(Qt.CursorShape.CrossCursor)
+                self.reset_snap()
                 self.pending_bbox = None
                 self.points = []
                 self.update()
@@ -208,5 +342,6 @@ class AnimatedScreenOverlay(QWidget):
             super().keyPressEvent(event)
 
     def closeEvent(self, event):
+        self.reset_snap()
         self.timer.stop()
         super().closeEvent(event)

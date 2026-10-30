@@ -51,6 +51,9 @@ It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to un
 - Shake your mouse quickly or press Alt + F7 to activate the screen capture.
 - A darkened overlay appears over your screen.
 - Click and drag to draw a circle around the area you want to select.
+- Nearby visible rectangles are detected locally and the selection snaps to their edges.
+- Hold Shift when releasing the mouse to keep a free selection.
+- Before confirming, drag the orange handles at the corners or along any edge to refine the rectangle.
 - Press Enter to confirm the selection, or Esc to cancel and try again.
 - A drawer window opens showing the captured image and AI suggestions.
 - Type a question in the input box at the bottom to ask about the image.
@@ -62,6 +65,7 @@ It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to un
 |------|-------------|
 | shakesearch.py | Main application: input listeners, Qt screen capture, session management |
 | overlay.py | Qt selection overlay and orange plasma animation |
+| rectangle_snap.py | Local rectangle detection and selection alignment |
 | drawer.py | Drawer window: image preview, AI chat |
 | requirements.txt | Python dependencies |
 | .env | Your API keys (not tracked by git) |
@@ -83,6 +87,22 @@ After updating an existing installation, install the new Qt dependency:
 python -m pip install -r requirements.txt
 python shakesearch.py
 ```
+
+## Rectangle snapping
+
+Draw roughly around a card, window, image or other rectangle. ShakeSearch checks
+nearby screen edges and aligns the selection when it finds a close match, including
+rectangles with rounded corners. If no reliable match is found, your original
+selection is kept. Hold **Shift when releasing the mouse** to skip alignment.
+
+Before pressing **Enter**, drag any orange corner handle or edge to adjust the
+selection. Manual adjustments are kept without snapping again. The selection
+stays within the screen and cannot shrink below 25 logical pixels per side.
+Nothing is sent to the chat until you confirm with Enter; Esc clears the selection.
+
+Detection uses OpenCV locally in a background thread; screenshots are not sent to
+an AI service for alignment. Rotated shapes and rectangles without clear visible
+edges may require a free selection. Install updated requirements after upgrading.
 
 ## Troubleshooting
 

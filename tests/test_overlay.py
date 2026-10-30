@@ -1,12 +1,13 @@
 """Run with QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v."""
 import os
 import threading
+import time
 import unittest
 from unittest.mock import Mock, patch
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
-from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtGui import QColor, QPixmap
+from PySide6.QtCore import QPoint, QRect, QRectF, Qt
+from PySide6.QtGui import QColor, QPixmap, QPainter, QPen
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
@@ -61,6 +62,89 @@ class OverlayTests(unittest.TestCase):
         QTest.mousePress(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(100, 120))
         QTest.mouseMove(self.overlay, QPoint(200, 220))
         QTest.mouseRelease(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(200, 220))
+        self.wait_for_snap()
+
+    def wait_for_snap(self):
+        for _ in range(500):
+            if not self.overlay._snap_pending:
+                break
+            time.sleep(.01)  # Let the Python detector run while Qt events are pumped.
+            self.app.processEvents()
+        self.assertFalse(self.overlay._snap_pending)
+
+    def draw_card(self):
+        self.overlay.close()
+        pixmap = self.data['pixmap'].copy()
+        painter = QPainter(pixmap)
+        painter.setPen(QPen(QColor('#eeeeee'), 2))
+        painter.setBrush(QColor('#202020'))
+        painter.drawRect(QRectF(100, 120, 200, 140))
+        painter.end()
+        self.data['pixmap'] = pixmap
+        self.overlay = AnimatedScreenOverlay(self.data, self.manager)
+        self.overlay.show()
+        self.app.processEvents()
+
+    def test_rough_selection_snaps_to_visible_rectangle(self):
+        self.draw_card()
+        QTest.mousePress(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(88, 108))
+        QTest.mouseRelease(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(312, 272))
+        self.wait_for_snap()
+        self.assertTrue(self.overlay.snapped)
+        box = self.overlay.pending_bbox
+        for actual, expected in zip((box.left(), box.top(), box.right(), box.bottom()), (100, 120, 300, 260)):
+            self.assertAlmostEqual(actual, expected, delta=3)
+        QTest.keyClick(self.overlay, Qt.Key.Key_Return)
+        self.manager.on_confirm_crop.assert_called_once()
+
+    def test_shift_keeps_selection_free(self):
+        self.draw_card()
+        QTest.mousePress(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(88, 108))
+        QTest.mouseRelease(self.overlay, Qt.MouseButton.LeftButton,
+                           Qt.KeyboardModifier.ShiftModifier, pos=QPoint(312, 272))
+        self.assertFalse(self.overlay._snap_pending)
+        self.assertFalse(self.overlay.snapped)
+        self.assertEqual(self.overlay.pending_bbox, QRectF(88, 108, 224, 164))
+
+    def test_enter_waits_for_alignment_before_confirming(self):
+        release = threading.Event()
+
+        def delayed(*args):
+            release.wait(2)
+            return QRectF(95, 115, 110, 110)
+
+        with patch('rectangle_snap.find_rectangle', side_effect=delayed):
+            QTest.mousePress(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(100, 120))
+            QTest.mouseRelease(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(200, 220))
+            QTest.keyClick(self.overlay, Qt.Key.Key_Return)
+            self.manager.on_confirm_crop.assert_not_called()
+            release.set()
+            self.wait_for_snap()
+        self.manager.on_confirm_crop.assert_called_once()
+        self.assertEqual(self.manager.on_confirm_crop.call_args.args[0].size, (220, 220))
+
+    def test_old_detection_cannot_replace_new_selection(self):
+        release = threading.Event()
+
+        def delayed(*args):
+            release.wait(2)
+            return QRectF(95, 115, 110, 110)
+
+        with patch('rectangle_snap.find_rectangle', side_effect=delayed):
+            QTest.mousePress(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(100, 120))
+            QTest.mouseRelease(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(200, 220))
+            QTest.mousePress(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(300, 300))
+            QTest.mouseRelease(self.overlay, Qt.MouseButton.LeftButton,
+                               Qt.KeyboardModifier.ShiftModifier, pos=QPoint(400, 400))
+            release.set()
+            for _ in range(200):
+                time.sleep(.01)
+                self.app.processEvents()
+                if not self.overlay._snap_tasks:
+                    break
+        self.assertFalse(self.overlay._snap_tasks)
+        self.assertEqual(self.overlay.pending_bbox, QRectF(300, 300, 100, 100))
+        self.assertFalse(self.overlay.snapped)
 
     def test_crop_uses_native_pixels_and_enter_confirms(self):
         self.select()
@@ -70,6 +154,65 @@ class OverlayTests(unittest.TestCase):
         QTest.keyClick(self.overlay, Qt.Key.Key_Return)
         self.manager.on_confirm_crop.assert_called_once()
         self.assertIs(self.manager.on_confirm_crop.call_args.args[1], self.data)
+
+    def test_all_edges_and_corners_can_be_refined_before_confirmation(self):
+        self.select()
+        cases = (
+            ((100, 170), (90, 170), (90, 120, 110, 100)),
+            ((200, 170), (215, 170), (100, 120, 115, 100)),
+            ((150, 120), (150, 110), (100, 110, 100, 110)),
+            ((150, 220), (150, 235), (100, 120, 100, 115)),
+            ((100, 120), (90, 110), (90, 110, 110, 110)),
+            ((200, 120), (215, 110), (100, 110, 115, 110)),
+            ((200, 220), (215, 235), (100, 120, 115, 115)),
+            ((100, 220), (90, 235), (90, 120, 110, 115)),
+        )
+        for start, end, expected in cases:
+            with self.subTest(start=start):
+                self.overlay.pending_bbox = QRectF(100, 120, 100, 100)
+                QTest.mousePress(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(*start))
+                QTest.mouseMove(self.overlay, QPoint(*end))
+                QTest.mouseRelease(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(*end))
+                self.assertEqual(self.overlay.pending_bbox, QRectF(*expected))
+                self.assertEqual(self.overlay.selected_image().size, (expected[2] * 2, expected[3] * 2))
+                self.assertFalse(self.overlay._snap_pending)
+                self.manager.on_confirm_crop.assert_not_called()
+        QTest.keyClick(self.overlay, Qt.Key.Key_Return)
+        self.manager.on_confirm_crop.assert_called_once()
+        self.assertEqual(self.manager.on_confirm_crop.call_args.args[0].size, (220, 230))
+
+    def test_refinement_is_clamped_to_screen_and_minimum_size(self):
+        self.select()
+        QTest.mousePress(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(100, 120))
+        QTest.mouseRelease(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(-50, -50))
+        self.assertEqual(self.overlay.pending_bbox, QRectF(0, 0, 200, 220))
+        QTest.mousePress(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(200, 220))
+        QTest.mouseRelease(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(800, 700))
+        self.assertEqual(self.overlay.pending_bbox, QRectF(0, 0, 640, 480))
+        QTest.mousePress(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(640, 480))
+        QTest.mouseRelease(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(-50, -50))
+        self.assertEqual(self.overlay.pending_bbox, QRectF(0, 0, 25, 25))
+
+    def test_manual_refinement_wins_over_in_flight_snap(self):
+        release = threading.Event()
+
+        def delayed(*args):
+            release.wait(2)
+            return QRectF(95, 115, 110, 110)
+
+        with patch('rectangle_snap.find_rectangle', side_effect=delayed):
+            QTest.mousePress(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(100, 120))
+            QTest.mouseRelease(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(200, 220))
+            QTest.mousePress(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(200, 170))
+            QTest.mouseRelease(self.overlay, Qt.MouseButton.LeftButton, pos=QPoint(230, 170))
+            release.set()
+            for _ in range(200):
+                time.sleep(.01)
+                self.app.processEvents()
+                if not self.overlay._snap_tasks:
+                    break
+        self.assertFalse(self.overlay._snap_tasks)
+        self.assertEqual(self.overlay.pending_bbox, QRectF(100, 120, 130, 100))
 
     def test_escape_clears_selection_then_cancels(self):
         self.select()
