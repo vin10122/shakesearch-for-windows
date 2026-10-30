@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
 from image_clipboard import copy_image_to_clipboard
-from lens_handoff import LensHandoff
+from lens_session import LensSession
 
 load_dotenv()
 
@@ -30,7 +30,7 @@ CHAT_SYSTEM_PROMPT = (
 )
 
 
-HTML_TEMPLATE = """<!DOCTYPE html>
+HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -360,7 +360,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="lens-search">
       <label for="lensQuestion">Cerca con Google Lens</label>
       <textarea id="lensQuestion" maxlength="500" placeholder="Domanda facoltativa, per esempio: dove posso comprarlo?"></textarea>
-      <span>Il ritaglio viene inviato a Google. Integrazione sperimentale.</span>
+      <span>Risultati Lens nella chat. Il ritaglio viene inviato a Google.</span>
+      <label><input type="checkbox" id="lensChatMode"> Usa Lens per le prossime domande</label>
       <button class="btn-action" id="sendToLensButton" onclick="sendToLens()">Invia a Lens</button>
       <span id="lensStatus" role="status" aria-live="polite"></span>
     </div>
@@ -381,16 +382,60 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <script>
   let isFullscreen = false;
 
+  let replyCounter = 0;
+
+  function createChatTurn(text, source) {
+    const chatBox = document.getElementById('chatBox');
+    const user = document.createElement('div');
+    user.className = 'chat-msg-user';
+    user.textContent = text;
+    chatBox.appendChild(user);
+    const answer = document.createElement('div');
+    answer.className = 'chat-msg-ai';
+    answer.id = 'reply-' + (++replyCounter);
+    answer.style.whiteSpace = 'pre-wrap';
+    answer.style.userSelect = 'text';
+    answer.textContent = source === 'lens' ? 'Ricerca su Google Lens…' : '…';
+    chatBox.appendChild(answer);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    return answer.id;
+  }
+
+  async function askLens(text) {
+    const id = createChatTurn(text || 'Cerca questa immagine con Lens', 'lens');
+    try {
+      const result = await pywebview.api.send_to_lens(text);
+      const answer = document.getElementById(id);
+      if (!result.ok) {
+        answer.textContent = result.error;
+      } else {
+        answer.textContent = 'Google Lens\n\n' + result.text;
+        for (const link of result.links || []) {
+          try {
+            const url = new URL(link.url);
+            if (!['http:', 'https:'].includes(url.protocol)) continue;
+            const anchor = document.createElement('a');
+            anchor.href = url.href;
+            anchor.target = '_blank';
+            anchor.rel = 'noopener noreferrer';
+            anchor.style.color = '#ffb077';
+            anchor.textContent = link.title;
+            answer.appendChild(document.createElement('br'));
+            answer.appendChild(anchor);
+          } catch (_) {}
+        }
+      }
+    } catch (error) {
+      updateAiResponse('Impossibile leggere Lens. Riprova.', id);
+    }
+  }
+
   async function sendToLens() {
     const button = document.getElementById('sendToLensButton');
-    const status = document.getElementById('lensStatus');
     button.disabled = true;
-    status.textContent = 'Apertura del browser…';
+    document.getElementById('lensChatMode').checked = true;
     try {
-      const result = await pywebview.api.send_to_lens(document.getElementById('lensQuestion').value);
-      status.textContent = result.ok ? 'Browser aperto per l’invio a Google Lens.' : result.error;
-    } catch (error) {
-      status.textContent = 'Impossibile aprire Google Lens. Riprova.';
+      await askLens(document.getElementById('lensQuestion').value);
     } finally {
       button.disabled = false;
     }
@@ -441,33 +486,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
   });
 
-  function sendPrompt() {
+  async function sendPrompt() {
     const input = document.getElementById('queryInput');
     const text = input.value.trim();
     if (!text) return;
     input.value = '';
-
-    const chatBox = document.getElementById('chatBox');
-    const uMsg = document.createElement('div');
-    uMsg.className = 'chat-msg-user';
-    uMsg.innerText = text;
-    chatBox.appendChild(uMsg);
-
-    const aMsg = document.createElement('div');
-    aMsg.className = 'chat-msg-ai';
-    aMsg.id = 'ai-resp-current';
-    aMsg.innerText = '...';
-    chatBox.appendChild(aMsg);
-
-    chatBox.scrollTop = chatBox.scrollHeight;
-    pywebview.api.send_chat(text);
+    if (document.getElementById('lensChatMode').checked) {
+      await askLens(text);
+    } else {
+      const id = createChatTurn(text, 'ai');
+      try {
+        await pywebview.api.send_chat(text, id);
+      } catch (error) {
+        updateAiResponse('Impossibile inviare la domanda. Riprova.', id);
+      }
+    }
   }
 
-  function updateAiResponse(text) {
-    const el = document.getElementById('ai-resp-current');
+  function updateAiResponse(text, id) {
+    const el = document.getElementById(id || 'ai-resp-current');
     if (el) {
-      el.innerText = text;
-      el.removeAttribute('id');
+      el.textContent = text;
       document.getElementById('chatBox').scrollTop = document.getElementById('chatBox').scrollHeight;
     }
   }
@@ -511,7 +550,7 @@ class DrawerApi:
         self.is_first_prompt = True
         self.client = None
         self._lens_lock = threading.Lock()
-        self._lens_handoffs = []
+        self._lens_session = None
         if GROQ_API_KEY:
             try:
                 from groq import Groq
@@ -521,6 +560,7 @@ class DrawerApi:
 
     def close_window(self):
         global GLOBAL_WINDOW
+        self._close_lens_session()
         if GLOBAL_WINDOW:
             GLOBAL_WINDOW.destroy()
 
@@ -545,49 +585,35 @@ class DrawerApi:
             logging.getLogger('shakesearch').exception('Unable to copy image')
             return dict(ok=False, error='Impossibile copiare l’immagine. Riprova; dettagli in shakesearch.log.')
 
-    def send_chat(self, text):
-        threading.Thread(target=self._ask_ai, args=(text,), daemon=True).start()
+    def send_chat(self, text, reply_id=None):
+        threading.Thread(target=self._ask_ai, args=(text, reply_id), daemon=True).start()
+
+    def _lens_status(self, text):
+        if GLOBAL_WINDOW:
+            GLOBAL_WINDOW.evaluate_js(
+                'document.getElementById("lensStatus").textContent = ' + json.dumps(text))
 
     def send_to_lens(self, question=''):
         if not self.image_bytes:
             return dict(ok=False, error='Immagine non disponibile. Esegui una nuova cattura.')
         try:
             with self._lens_lock:
-                self._lens_handoffs = [item for item in self._lens_handoffs if not item.closed]
-                if len(self._lens_handoffs) >= 4:
-                    self._lens_handoffs.pop(0).close()
-                handoff = LensHandoff(self.image_bytes, question)
-                window = GLOBAL_WINDOW
-                previous_on_top = window.on_top if window else None
-                try:
-                    if window:
-                        window.on_top = False
-                        window.minimize()
-                    handoff.open()
-                    if window:
-                        if not handoff.wait_for_delivery(timeout=15):
-                            raise RuntimeError('The browser did not receive the Lens image page')
-                        # The browser now owns all image bytes and needs no more
-                        # local resources. Only this drawer process is closed;
-                        # the main capture listener remains running independently.
-                        handoff.close()
-                        window.destroy()
-                except Exception:
-                    handoff.close()
-                    if window:
-                        try:
-                            window.restore()
-                            window.on_top = previous_on_top
-                        except Exception:
-                            logging.getLogger('shakesearch').exception('Unable to restore the chat window')
-                    raise
-                self._lens_handoffs.append(handoff)
-            return dict(ok=True)
-        except ValueError as error:
+                if self._lens_session is None:
+                    self._lens_session = LensSession(self.image_bytes, status=self._lens_status)
+                session = self._lens_session
+            result = session.query(question)
+            self._lens_status('Risultati Lens letti. Puoi fare un’altra domanda nella chat.')
+            return dict(ok=True, **result)
+        except Exception as error:
+            logging.getLogger('shakesearch').exception('Unable to read Lens results')
             return dict(ok=False, error=str(error))
-        except Exception:
-            logging.getLogger('shakesearch').exception('Unable to prepare Google Lens handoff')
-            return dict(ok=False, error='Impossibile avviare Lens. Controlla il browser predefinito e riprova.')
+
+    def _close_lens_session(self):
+        with self._lens_lock:
+            session = self._lens_session
+            self._lens_session = None
+        if session is not None:
+            session.close()
 
     def open_image_for_text(self):
         if not self.image_bytes:
@@ -610,16 +636,18 @@ class DrawerApi:
             logging.getLogger('shakesearch').exception('Unable to open image text viewer')
             return dict(ok=False, error='Impossibile aprire l’immagine. Controlla shakesearch.log.')
 
-    def _ask_ai(self, text):
+    def _ask_ai(self, text, reply_id=None):
         global GLOBAL_WINDOW
-        if not self.client or not GLOBAL_WINDOW:
+        if not GLOBAL_WINDOW:
+            return
+        if not self.client:
+            GLOBAL_WINDOW.evaluate_js('updateAiResponse(' + json.dumps('Configura GROQ_API_KEY per usare le spiegazioni AI.') + ', ' + json.dumps(reply_id) + ')')
             return
 
         content_payload = [{"type": "text", "text": text}]
 
-        if self.is_first_prompt and os.path.exists(self.image_path):
-            with open(self.image_path, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode()
+        if self.is_first_prompt and self.image_bytes:
+            b64 = base64.b64encode(self.image_bytes).decode()
             content_payload.append({
                 "type": "image_url",
                 "image_url": {"url": f"data:image/png;base64,{b64}"}
@@ -651,9 +679,9 @@ class DrawerApi:
             self.conversation_history.append({"role": "assistant", "text": answer})
 
             ans_clean = json.dumps(answer)
-            GLOBAL_WINDOW.evaluate_js(f"updateAiResponse({ans_clean})")
+            GLOBAL_WINDOW.evaluate_js(f"updateAiResponse({ans_clean}, {json.dumps(reply_id)})")
         except Exception as e:
-            GLOBAL_WINDOW.evaluate_js(f"updateAiResponse('Errore: {e}')")
+            GLOBAL_WINDOW.evaluate_js(f"updateAiResponse({json.dumps('Errore: ' + str(e))}, {json.dumps(reply_id)})")
 
 
 def run_drawer_app(image_path, x, y, width, height):
@@ -716,6 +744,7 @@ def run_drawer_app(image_path, x, y, width, height):
         background_color='#000000'
     )
     GLOBAL_WINDOW.events.loaded += on_loaded
+    GLOBAL_WINDOW.events.closed += api._close_lens_session
     webview.start()
 
 

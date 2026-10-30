@@ -17,7 +17,7 @@ Circle to Search is Google's visual search feature for supported Android phones.
 
 Google explains the original Android feature in its [introduction to Circle to Search](https://blog.google/products/search/google-circle-to-search-android/). ShakeSearch takes inspiration from its screen selection gesture and is developed independently of Google.
 
-ShakeSearch currently provides AI-generated explanations and answers about the selected content. An experimental **Invia a Lens** option is available to try sending a selection to Google Lens in your browser. **Built-in image search is coming soon.**
+ShakeSearch currently provides AI-generated explanations and answers about the selected content. An experimental **Invia a Lens** option reads Google Lens results into the ShakeSearch chat through an internal web session. **Built-in image search is coming soon.**
 
 It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to understand what is on your screen.
 
@@ -67,7 +67,7 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
 - Type a question in the input box at the bottom to ask about the image.
 - Click **Copia immagine** to copy the original capture to the Windows clipboard. A message confirms the copy or explains an error.
 - Click **Apri immagine per copiare testo** to open the image alongside its recognized text.
-- To try external image search, add an optional question under **Cerca con Google Lens** and click **Invia a Lens**.
+- To query Lens in the chat, add an optional question under **Cerca con Google Lens** and click **Invia a Lens**. Leave **Usa Lens per le prossime domande** checked to send follow-up questions about the same image.
 
 ## Files
 
@@ -79,8 +79,9 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
 | drawer.py | Drawer window: image preview, AI chat |
 | ocr_viewer.py | Image viewer with editable text recognition and clipboard support |
 | image_clipboard.py | Windows clipboard image transfer (DIB and PNG) |
-| lens_handoff.py | Experimental image handoff to Google Lens in the default browser |
-| browser_window.py | Separate browser-window launch and Windows focus handling |
+| lens_handoff.py | Temporary local image page for Lens upload |
+| lens_session.py | Isolated internal Lens session and reading of visible results |
+| browser_window.py | Standalone browser-launch helper |
 | requirements.txt | Python dependencies |
 | .env | Your API keys (not tracked by git) |
 | .gitignore | Files excluded from version control |
@@ -130,34 +131,32 @@ selected portion, or all text when nothing is selected. **Ctrl+C** copies a text
 selection as usual. Use **Rileggi testo** to retry recognition. Empty results,
 request failures and truncated text are shown in the window.
 
-## Google Lens handoff (experimental)
+## Google Lens in the chat (experimental)
 
-Enter an optional question in **Cerca con Google Lens**, then click **Invia a Lens**.
-ShakeSearch minimizes its chat panel and opens a separate browser window for
-Google Lens. On Windows, Chrome, Edge, Firefox, Brave and Vivaldi receive an explicit
-new-window command, and ShakeSearch requests foreground focus for the new window.
-Once the browser has received the complete image page, the chat panel closes
-automatically. ShakeSearch keeps running in the background for the next capture.
-If the browser fails to open or receive the image, the chat panel is restored. Other browser handlers receive a standard new-window request,
-which they may choose to handle as a tab. The browser prepares an automatic image upload to
-Google Lens. The question is included in the request. The capture stays on your
-computer until the browser sends it directly to Google; no public image-hosting
-service is used. A temporary, one-use local page handles the transfer and expires
-after two minutes. No Groq key is needed for this option.
+Enter an optional question in **Cerca con Google Lens** and click **Invia a Lens**.
+ShakeSearch keeps its chat open, loads the capture in an isolated internal web
+window and reads visible text and source links from Lens into the conversation.
+It does not open the default browser, minimize the chat or close the panel.
 
-The upload target is `https://lens.google.com/v3/upload`, using the service host
-from [Chromium's Lens configuration](https://github.com/chromium/chromium/blob/main/components/lens/lens_features.cc)
-and the upload route in [Chromium's Google image-search template](https://github.com/chromium/chromium/blob/132.0.6834.83/components/search_engines/prepopulated_engines.json).
-The separate `lens.google` site does not provide this upload route.
+With **Usa Lens per le prossime domande** checked, messages in the main input use
+the same image-search session. Uncheck it to return to Groq's AI explanations.
+Lens replies are the text and links read from Google, not AI-generated guesses.
+If no readable results are found, the chat reports an error. No additional API
+key or public image-hosting service is used; the image is sent directly to Google.
 
-This integration uses Google's web upload form, not an official Lens API. The
-browser's multipart image-and-question submission has been tested with an
-intercepted destination. **Actual Google results and acceptance of the optional
-question have not yet been verified**, because Google access is blocked in the
-cloud development environment. Google may change the form, ignore the question,
-or ask for consent or a verification step. If automatic file preparation is not
-supported by the browser, the temporary page offers image download and a link to
-Lens for manual upload. An opened browser tab does not confirm a successful search.
+The internal Google window has no access to ShakeSearch's application API. It is
+normally hidden, but appears if Google asks for consent, login or human
+verification. Complete that step there to continue. Closing ShakeSearch's chat
+also closes the internal session.
+
+This automates Google's website, not an official Lens API. Page structure,
+image-session lifetime and support for follow-up questions can change. Automated
+checks cover upload, DOM extraction, session reuse and chat rendering using
+simulated Google pages. **The live Google flow still needs verification on
+Windows**, because Google access is blocked in the cloud development environment.
+
+The upload host is `lens.google.com`, as configured in
+[Chromium's Lens configuration](https://github.com/chromium/chromium/blob/main/components/lens/lens_features.cc).
 
 ## Troubleshooting
 
@@ -178,13 +177,13 @@ Run the Qt rendering, input, multi-monitor lifecycle and crop tests without a de
 QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v
 ```
 
-For the optional browser handoff check (all requests to the Lens upload endpoint
-are intercepted, so this does not validate Google search results):
+For the optional internal Lens chat check (Google pages are simulated, so this
+does not validate live Google results):
 
 ```bash
 python -m pip install playwright
 python -m playwright install chromium
-python tests/check_lens_browser.py
+python tests/check_lens_chat_browser.py
 ```
 
 ## License

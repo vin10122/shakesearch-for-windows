@@ -104,58 +104,45 @@ class DrawerLensTests(unittest.TestCase):
 
     def test_sends_immutable_capture_and_question(self):
         self.path.write_bytes(b'new capture')
-        with patch.object(drawer, 'LensHandoff') as factory:
-            factory.return_value.closed = False
-            self.assertEqual(self.api.send_to_lens('Che oggetto è?'), dict(ok=True))
-        factory.assert_called_once_with(image_bytes(), 'Che oggetto è?')
-        factory.return_value.open.assert_called_once()
+        with patch.object(drawer, 'LensSession') as factory:
+            factory.return_value.query.return_value = dict(text='Real Lens text', links=[])
+            result = self.api.send_to_lens('Che oggetto è?')
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['text'], 'Real Lens text')
+        self.assertEqual(factory.call_args.args[0], image_bytes())
+        factory.return_value.query.assert_called_once_with('Che oggetto è?')
 
-    def test_missing_capture_does_not_open_browser(self):
+    def test_missing_capture_does_not_create_lens_session(self):
         self.api.image_bytes = None
-        with patch.object(drawer, 'LensHandoff') as factory:
+        with patch.object(drawer, 'LensSession') as factory:
             self.assertFalse(self.api.send_to_lens()['ok'])
         factory.assert_not_called()
 
-    def test_drawer_closes_only_after_browser_receives_the_image(self):
+    def test_followups_reuse_session_and_never_close_main_chat(self):
         window = Mock(on_top=True)
-        with patch.object(drawer, 'GLOBAL_WINDOW', window), patch.object(drawer, 'LensHandoff') as factory:
-            factory.return_value.closed = False
-            def opened():
-                self.assertFalse(window.on_top)
-                window.minimize.assert_called_once()
-                window.destroy.assert_not_called()
-            factory.return_value.open.side_effect = opened
-            def delivered(timeout):
-                window.destroy.assert_not_called()
-                return True
-            factory.return_value.wait_for_delivery.side_effect = delivered
-            self.assertEqual(self.api.send_to_lens(), dict(ok=True))
-        window.restore.assert_not_called()
-        factory.return_value.wait_for_delivery.assert_called_once_with(timeout=15)
-        factory.return_value.close.assert_called_once()
-        window.destroy.assert_called_once()
-
-    def test_drawer_stays_available_when_browser_never_receives_image(self):
-        window = Mock(on_top=True)
-        with patch.object(drawer, 'GLOBAL_WINDOW', window), patch.object(drawer, 'LensHandoff') as factory, self.assertLogs('shakesearch', level='ERROR'):
-            factory.return_value.wait_for_delivery.return_value = False
-            self.assertFalse(self.api.send_to_lens()['ok'])
+        with patch.object(drawer, 'GLOBAL_WINDOW', window), patch.object(drawer, 'LensSession') as factory:
+            factory.return_value.query.return_value = dict(text='Lens result', links=[])
+            self.assertTrue(self.api.send_to_lens('Che cos’è?')['ok'])
+            self.assertTrue(self.api.send_to_lens('E il prezzo?')['ok'])
+        factory.assert_called_once()
+        self.assertEqual(factory.return_value.query.call_count, 2)
+        window.minimize.assert_not_called()
         window.destroy.assert_not_called()
-        window.restore.assert_called_once()
-        self.assertTrue(window.on_top)
 
-    def test_drawer_is_restored_when_browser_launch_fails(self):
-        window = Mock(on_top=True)
-        with patch.object(drawer, 'GLOBAL_WINDOW', window), patch.object(drawer, 'LensHandoff') as factory, self.assertLogs('shakesearch', level='ERROR'):
-            factory.return_value.open.side_effect = RuntimeError('no browser')
-            self.assertFalse(self.api.send_to_lens()['ok'])
-        self.assertTrue(window.on_top)
-        window.restore.assert_called_once()
-        factory.return_value.close.assert_called_once()
-
-    def test_browser_failure_is_reported_to_ui(self):
-        with patch.object(drawer, 'LensHandoff') as factory, self.assertLogs('shakesearch', level='ERROR'):
-            factory.return_value.open.side_effect = RuntimeError('no browser')
-            result = self.api.send_to_lens()
+    def test_failed_lens_query_is_not_replaced_with_an_ai_guess(self):
+        self.api.client = Mock()
+        with patch.object(drawer, 'LensSession') as factory, self.assertLogs('shakesearch', level='ERROR'):
+            factory.return_value.query.side_effect = RuntimeError('Lens non leggibile')
+            result = self.api.send_to_lens('Quale prodotto?')
         self.assertFalse(result['ok'])
-        self.assertIn('browser', result['error'])
+        self.assertEqual(result['error'], 'Lens non leggibile')
+        self.api.client.chat.completions.create.assert_not_called()
+
+    def test_closing_drawer_also_closes_internal_session(self):
+        window = Mock()
+        session = Mock()
+        self.api._lens_session = session
+        with patch.object(drawer, 'GLOBAL_WINDOW', window):
+            self.api.close_window()
+        session.close.assert_called_once()
+        window.destroy.assert_called_once()

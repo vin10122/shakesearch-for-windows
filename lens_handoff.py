@@ -121,13 +121,17 @@ class LensHandoff:
         """Wait until the browser has the complete, self-contained image page."""
         return self._delivered.wait(timeout)
 
-    def open(self):
+    def start(self):
+        """Serve the image page for either an internal WebView or a browser."""
         self._thread = threading.Thread(target=self._server.serve_forever,
                                         kwargs={'poll_interval': .1}, daemon=True)
         self._thread.start()
         self._timer = threading.Timer(HANDOFF_SECONDS, self.close)
         self._timer.daemon = True
         self._timer.start()
+
+    def open(self):
+        self.start()
         try:
             if not open_browser_window(self.url):
                 raise RuntimeError('Impossibile aprire il browser predefinito.')
