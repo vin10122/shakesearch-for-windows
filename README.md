@@ -1,54 +1,74 @@
-# ai-pointer-for-windows
+# ShakeSearch
 
-Clone open-source del **Magic Pointer** di Googlebook OS, realizzato per Windows con Python + Groq (Qwen 27B vision).
+ShakeSearch is an experimental open-source project for Windows that brings an AI-powered screen selection tool to your desktop. It is inspired by features like Google's Magic Pointer and Circle to Search, but it is an independent project with no affiliation with Google.
 
-## Cosa fa
+## Purpose
 
-Scuotendo il mouse (shake gesture) si attiva un selettore circolare stile **Circle to Search**. Si trascina per cerchiare un'area dello schermo, si rilascia e si apre una finestra chat con:
+ShakeSearch lets you select any area of your screen by shaking your mouse or pressing a hotkey. Once you circle an area, a drawer window opens with:
 
-* l'anteprima dell'immagine selezionata
-* fino a 3 suggerimenti automatici generati da Groq (Qwen 3.8 27B)
-* un campo per scrivere un prompt personalizzato sull'immagine
-* copia negli appunti con un clic sui suggerimenti
+- A preview of the captured image
+- AI-generated suggestions about what is in the image
+- A text input to ask custom questions about the selection
+- Options to copy the image or search the web for what you circled
 
-## Requisiti
+It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to understand what is on your screen.
 
-* Python 3.10+
-* Una chiave API [Groq](https://console.groq.com/) (gratuita)
+**This is experimental software.** It is provided as-is without warranty. Use it at your own risk. The project is not affiliated with, endorsed by, or connected to Google LLC or any of its products.
 
-## Installazione
+## Safe name
 
-```powershell
-git clone https://github.com/vin10122/ai-pointer-for-windows.git
-cd ai-pointer-for-windows
-pip install -r requirements.txt
-```
+The project name "ShakeSearch" was chosen to avoid any trademark conflict with Google. Names like "Magic Pointer", "Circle to Search", and "Googlebook" belong to Google and are not used in this project.
 
-Crea un file `.env` nella cartella del progetto con la tua chiave Groq:
+## Requirements
 
-```
-GROQ_API_KEY=la_tua_chiave_qui
-GROQ_MODEL=qwen/qwen3.8-27b
-```
+- Windows 10 or Windows 11
+- Python 3.10 or newer
+- A free Groq API key from https://console.groq.com/
 
-## Avvio
+## Installation
 
-```powershell
-python magic_pointer.py
-```
+1. Download or clone this repository:
 
-*Scuoti il mouse* per attivare il selettore circolare. Trascina per ingrandire il cerchio, rilascia per confermare (Esc per annullare).
+   git clone https://github.com/vin10122/shakesearch-windows.git
+   cd shakesearch-windows
 
-## File
+2. Install the Python dependencies:
 
-| File | Descrizione |
+   pip install -r requirements.txt
+
+3. Create a file named `.env` in the project folder with your Groq API key:
+
+   GROQ_API_KEY=your_api_key_here
+   GROQ_MODEL=qwen/qwen3.8-27b
+
+4. Run the application:
+
+   python shakesearch.py
+
+## How to use
+
+- Shake your mouse quickly or press Alt + F7 to activate the screen capture.
+- A darkened overlay appears over your screen.
+- Click and drag to draw a circle around the area you want to select.
+- Press Enter to confirm the selection, or Esc to cancel and try again.
+- A drawer window opens showing the captured image and AI suggestions.
+- Type a question in the input box at the bottom to ask about the image.
+- Click Copy to copy the image to the clipboard, or Search web to look it up online.
+
+## Files
+
+| File | Description |
 |------|-------------|
-| `magic_pointer.py` | Logica principale: rilevazione shake, selettore circolare, chat Groq |
-| `drawer_webview.py` | Componente webview drawer (integrazione UI) |
-| `requirements.txt` | Dipendenze Python |
-| `.env` | Chiavi API (non committato, crealo tu) |
-| `.gitignore` | File esclusi da git |
+| shakesearch.py | Main application: shake detection, screen capture, overlay |
+| drawer.py | Drawer window: image preview, AI chat, web search |
+| requirements.txt | Python dependencies |
+| .env | Your API keys (not tracked by git) |
+| .gitignore | Files excluded from version control |
 
-## Licenza
+## License
 
-MIT
+MIT License
+
+## Disclaimer
+
+This project is experimental. It uses third-party AI models through the Groq API. Screen captures are processed by an external service. Do not use this tool to capture sensitive or private information unless you understand and accept the privacy implications of sending images to an AI API.

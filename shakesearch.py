@@ -65,7 +65,7 @@ def get_monitor_work_area(x, y):
     return None
 
 
-class MagicPointer:
+class ShakeSearch:
     def __init__(self):
         self.positions = []
         self.last_shake = 0
@@ -110,7 +110,7 @@ class MagicPointer:
             if now - self.last_shake > SHAKE_DEBOUNCE:
                 self.last_shake = now
                 self.positions = []
-                print("[Magic Pointer] Shake rilevato!")
+                print("[ShakeSearch] Shake detected!")
                 return True
 
         return False
@@ -122,7 +122,7 @@ class MagicPointer:
             self.root.after(0, self.trigger_capture)
 
     def on_hotkey_triggered(self):
-        print("[Magic Pointer] Scorciatoia Alt+F7 premuta!")
+        print("[ShakeSearch] Alt+F7 hotkey pressed!")
         self.root.after(0, self.trigger_capture)
 
     def trigger_capture(self):
@@ -163,7 +163,7 @@ class MagicPointer:
         self.hotkey_listener.daemon = True
         self.hotkey_listener.start()
 
-        print("[Magic Pointer] Attivo! Premi Alt + F7 o scuoti il mouse.")
+        print("[ShakeSearch] Active! Press Alt + F7 or shake the mouse.")
         self.root.mainloop()
 
 
@@ -212,7 +212,7 @@ class MultiScreenOverlayManager:
         expanded_h = min(680, int((bottom_limit - s_top) * 0.82))
         pos_y = bottom_limit - expanded_h - 14
 
-        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "drawer_webview.py")
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "drawer.py")
         cmd = [
             sys.executable,
             script_path,
@@ -310,7 +310,7 @@ class AnimatedScreenOverlay:
         self.header_text = self.canvas.create_text(
             self.width // 2,
             38,
-            text="✨ Cerchia qualsiasi cosa  •  Esc per uscire",
+            text="Circle anything  or  Esc to exit",
             fill="#ffffff",
             font=("Segoe UI", 12, "bold")
         )

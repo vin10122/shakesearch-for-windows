@@ -18,7 +18,7 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
 
 def search_duckduckgo(query, max_results=3):
     """
-    Esegue una ricerca web DuckDuckGo estraendo snippet testuali aggiornati.
+    Performs a DuckDuckGo web search and extracts text snippets.
     """
     if not query or not query.strip():
         return []
@@ -41,12 +41,12 @@ def search_duckduckgo(query, max_results=3):
                     break
             return results
     except Exception as e:
-        print(f"[DuckDuckGo] Errore ricerca '{query}': {e}")
+        print(f"[DuckDuckGo] Search error for '{query}': {e}")
         return []
 
 
 HTML_TEMPLATE = """<!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <style>
@@ -276,7 +276,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     max-width: 90%;
   }
 
-  /* Barra di ricerca e Spunta DuckDuckGo */
+  /* Search bar */
   .footer {
     padding: 4px 14px 10px 14px;
     display: flex;
@@ -378,32 +378,32 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <div class="handle-bar"></div>
   <div class="header">
     <div class="brand">
-      <span>✨</span> Circle to Search
+      <span>✨</span> ShakeSearch
     </div>
     <div class="header-actions">
-      <button class="btn-icon" id="btnToggleFs" title="Schermo intero (F11)" onclick="toggleFs()">⛶</button>
-      <button class="btn-icon" title="Chiudi (Esc)" onclick="pywebview.api.close_window()">✕</button>
+      <button class="btn-icon" id="btnToggleFs" title="Fullscreen (F11)" onclick="toggleFs()">⛶</button>
+      <button class="btn-icon" title="Close (Esc)" onclick="pywebview.api.close_window()">✕</button>
     </div>
   </div>
 
   <div class="content-area" id="contentArea">
     <div class="preview-wrapper">
-      <img id="cropPreview" src="" alt="Selezione">
+      <img id="cropPreview" src="" alt="Selection">
     </div>
 
     <div class="actions-row">
       <button class="btn-action" onclick="pywebview.api.copy_image()">
-        📋 Copia
+        📋 Copy
       </button>
-      <button class="btn-action" onclick="pywebview.api.search_google()">
-        🔍 Cerca su Google
+      <button class="btn-action" onclick="pywebview.api.search_web()">
+        🔍 Search web
       </button>
       <button class="btn-action" onclick="toggleFs()">
-        <span id="fsActionLabel">⛶ Schermo intero</span>
+        <span id="fsActionLabel">⛶ Fullscreen</span>
       </button>
     </div>
 
-    <div class="status-text" id="statusText">⏳ Riconoscimento ed analisi in corso...</div>
+    <div class="status-text" id="statusText">⏳ Analyzing selection...</div>
     <div class="chips-container" id="chipsContainer"></div>
     <div class="chat-box" id="chatBox"></div>
   </div>
@@ -412,12 +412,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div class="ddg-toggle-bar">
       <label class="ddg-label">
         <input type="checkbox" id="ddgToggle" class="ddg-checkbox">
-        🌐 Arricchisci con ricerca Web (DuckDuckGo)
+        🌐 Enrich with web search (DuckDuckGo)
       </label>
-      <span id="ddgIndicator" style="display:none; color: var(--primary-orange); font-size:10px;">Ricerca attiva</span>
+      <span id="ddgIndicator" style="display:none; color: var(--primary-orange); font-size:10px;">Web search active</span>
     </div>
     <div class="search-pill">
-      <input type="text" id="queryInput" class="search-input" placeholder="Chiedi qualsiasi cosa o cerchia..." onkeydown="if(event.key==='Enter') sendPrompt()">
+      <input type="text" id="queryInput" class="search-input" placeholder="Ask anything or circle..." onkeydown="if(event.key==='Enter') sendPrompt()">
       <button class="btn-send" onclick="sendPrompt()">➔</button>
     </div>
   </div>
@@ -430,7 +430,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     isFullscreen = !isFullscreen;
     document.body.classList.toggle('is-fullscreen', isFullscreen);
     document.getElementById('btnToggleFs').innerText = isFullscreen ? '🗗' : '⛶';
-    document.getElementById('fsActionLabel').innerText = isFullscreen ? '🗗 Finestra' : '⛶ Schermo intero';
+    document.getElementById('fsActionLabel').innerText = isFullscreen ? '🗗 Window' : '⛶ Fullscreen';
     pywebview.api.toggle_fullscreen();
   }
 
@@ -460,7 +460,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     const aMsg = document.createElement('div');
     aMsg.className = 'chat-msg-ai';
     aMsg.id = 'ai-resp-current';
-    aMsg.innerText = useWeb ? 'Ricerca web in corso…' : '…';
+    aMsg.innerText = useWeb ? 'Web search in progress...' : '...';
     chatBox.appendChild(aMsg);
 
     chatBox.scrollTop = chatBox.scrollHeight;
@@ -481,7 +481,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   function setSuggestions(list) {
-    document.getElementById('statusText').innerText = '✨ Suggerimenti correlati';
+    document.getElementById('statusText').innerText = '✨ Related suggestions';
     const c = document.getElementById('chipsContainer');
     c.innerHTML = '';
     list.forEach(txt => {
@@ -547,11 +547,11 @@ class DrawerApi:
         except Exception:
             pass
 
-    def search_google(self):
-        webbrowser.open("https://images.google.com/")
+    def search_web(self):
+        webbrowser.open("https://duckduckgo.com/")
 
     def search_query(self, query):
-        url = f"https://www.google.com/search?q={urllib.parse.quote(query)}"
+        url = f"https://duckduckgo.com/?q={urllib.parse.quote(query)}"
         webbrowser.open(url)
 
     def send_chat(self, text, use_web=False):
@@ -596,7 +596,7 @@ class DrawerApi:
 
         # Costruisce la lista messaggi mantenendo il contesto precedente
         messages = [
-            {"role": "system", "content": "Sei l'assistente visivo intelligente di Circle to Search. Fornisci risposte precise, concise e ben formattate."}
+            {"role": "system", "content": "You are the intelligent visual assistant of ShakeSearch. Provide accurate, concise, and well-formatted answers."}
         ]
 
         # Inserisce la cronologia precedente
@@ -641,11 +641,11 @@ def run_drawer_app(image_path, x, y, width, height):
                     with open(image_path, "rb") as f:
                         b64 = base64.b64encode(f.read()).decode()
                     prompt = (
-                        "Sei Google Circle to Search. "
-                        "Guarda l'elemento selezionato. "
-                        "Fornisci: 1) Nome o identificazione in una riga. "
-                        "2) Fino a 2 suggerimenti rapidi. "
-                        "Rispondi in modo diretto senza testo di introduzione."
+                        "You are ShakeSearch visual assistant. "
+                        "Look at the selected element. "
+                        "Provide: 1) Name or identification in one line. "
+                        "2) Up to 2 quick suggestions. "
+                        "Answer directly without introductory text."
                     )
                     comp = api.client.chat.completions.create(
                         model=GROQ_MODEL,
@@ -670,7 +670,7 @@ def run_drawer_app(image_path, x, y, width, height):
 
     api = DrawerApi(image_path, (x, y, width, height))
     GLOBAL_WINDOW = webview.create_window(
-        title="Circle to Search",
+        title="ShakeSearch",
         html=HTML_TEMPLATE,
         js_api=api,
         width=width,
