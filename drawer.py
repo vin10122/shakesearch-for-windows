@@ -1,7 +1,6 @@
 import sys
 import os
 import json
-import io
 import base64
 import threading
 import logging
@@ -9,6 +8,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
+from image_clipboard import copy_image_to_clipboard
 
 load_dotenv()
 
@@ -314,8 +314,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
 
     <div class="actions-row">
-      <button class="btn-action" onclick="pywebview.api.copy_image()">
-        📋 Copy
+      <button class="btn-action" id="copyImageButton" onclick="copyImage()">
+        📋 Copia immagine
       </button>
       <button class="btn-action" id="openTextImage" onclick="openImageForText()">
         Apri immagine per copiare testo
@@ -323,6 +323,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       <button class="btn-action" onclick="toggleFs()">
         <span id="fsActionLabel">⛶ Fullscreen</span>
       </button>
+      <span class="status-text" id="copyImageStatus" role="status" aria-live="polite"></span>
     </div>
 
     <div class="status-text" id="statusText">⏳ Analyzing selection...</div>
@@ -340,6 +341,21 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 <script>
   let isFullscreen = false;
+
+  async function copyImage() {
+    const button = document.getElementById('copyImageButton');
+    const status = document.getElementById('copyImageStatus');
+    button.disabled = true;
+    status.textContent = 'Copia in corso…';
+    try {
+      const result = await pywebview.api.copy_image();
+      status.textContent = result.ok ? 'Immagine copiata negli appunti.' : result.error;
+    } catch (error) {
+      status.textContent = 'Impossibile copiare l’immagine. Riprova.';
+    } finally {
+      button.disabled = false;
+    }
+  }
 
   async function openImageForText() {
     const button = document.getElementById('openTextImage');
@@ -461,20 +477,17 @@ class DrawerApi:
                 print(f"Errore toggle fullscreen: {e}")
 
     def copy_image(self):
+        if not self.image_bytes:
+            return dict(ok=False, error='Immagine non disponibile. Esegui una nuova cattura.')
         try:
-            from PIL import Image
-            img = Image.open(self.image_path)
-            output = io.BytesIO()
-            img.convert("RGB").save(output, "BMP")
-            data = output.getvalue()[14:]
-            output.close()
-            import win32clipboard  # type: ignore
-            win32clipboard.OpenClipboard()
-            win32clipboard.EmptyClipboard()
-            win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
-            win32clipboard.CloseClipboard()
+            copy_image_to_clipboard(self.image_bytes)
+            return dict(ok=True)
+        except ImportError:
+            logging.getLogger('shakesearch').exception('Windows clipboard dependency is missing')
+            return dict(ok=False, error='Aggiorna le dipendenze: python -m pip install -r requirements.txt')
         except Exception:
-            pass
+            logging.getLogger('shakesearch').exception('Unable to copy image')
+            return dict(ok=False, error='Impossibile copiare l’immagine. Riprova; dettagli in shakesearch.log.')
 
     def send_chat(self, text):
         threading.Thread(target=self._ask_ai, args=(text,), daemon=True).start()

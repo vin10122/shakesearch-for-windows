@@ -57,7 +57,7 @@ It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to un
 - Press Enter to confirm the selection, or Esc to cancel and try again.
 - A drawer window opens showing the captured image and AI suggestions.
 - Type a question in the input box at the bottom to ask about the image.
-- Click Copy to copy the image to the clipboard.
+- Click **Copia immagine** to copy the original capture to the Windows clipboard. A message confirms the copy or explains an error.
 - Click **Apri immagine per copiare testo** to open the image alongside its recognized text.
 
 ## Files
@@ -69,6 +69,7 @@ It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to un
 | rectangle_snap.py | Local rectangle detection and selection alignment |
 | drawer.py | Drawer window: image preview, AI chat |
 | ocr_viewer.py | Image viewer with editable text recognition and clipboard support |
+| image_clipboard.py | Windows clipboard image transfer (DIB and PNG) |
 | requirements.txt | Python dependencies |
 | .env | Your API keys (not tracked by git) |
 | .gitignore | Files excluded from version control |
@@ -119,6 +120,8 @@ selection as usual. Use **Rileggi testo** to retry recognition. Empty results,
 request failures and truncated text are shown in the window.
 
 ## Troubleshooting
+
+If image copying reports a missing dependency, run `python -m pip install -r requirements.txt` to install `pywin32` on Windows.
 
 On Windows, application and chat-process logs are written to
 `%TEMP%\shakesearch.log`. Open them with:

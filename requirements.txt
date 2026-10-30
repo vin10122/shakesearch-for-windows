@@ -6,3 +6,4 @@ pyperclip>=1.8.2
 pywebview>=5.0
 PySide6-Essentials>=6.6,<7
 opencv-python-headless>=4.10,<5
+pywin32>=306; sys_platform == "win32"
