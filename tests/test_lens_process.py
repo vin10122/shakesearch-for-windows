@@ -89,8 +89,9 @@ class LensWorkerLifecycleTests(unittest.TestCase):
             dict(type='query', id='first', question='What is this?'), dict(type='close'))) + '\n'
         output = io.StringIO()
         session = Mock()
-        def build(image, window_factory, status):
+        def build(image, window_factory, status, visible):
             self.assertEqual(image, b'capture')
+            self.assertTrue(visible)
             def query(question):
                 self.assertIs(window_factory('Lens', url='https://lens.google.com/search?p=test'), window)
                 status('Reading')

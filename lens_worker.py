@@ -43,7 +43,7 @@ def main():
         return 1
     stop = threading.Event()
     write_lock = threading.Lock()
-    window = webview.create_window('ShakeSearch · Consenso Google Lens', url='about:blank',
+    window = webview.create_window('ShakeSearch · Google Lens', url='about:blank',
                                    hidden=True, js_api=None, width=900, height=740, on_top=False)
     window.events.closed += stop.set
     current = {'id': None}
@@ -70,7 +70,7 @@ def main():
             if first.get('type') != 'init':
                 raise ValueError('Missing Lens image initialization')
             image = base64.b64decode(first['image'], validate=True)
-            session = LensSession(image, window_factory=navigate_existing, status=status)
+            session = LensSession(image, window_factory=navigate_existing, status=status, visible=True)
             for line in sys.stdin:
                 message = json.loads(line)
                 if stop.is_set():

@@ -139,12 +139,13 @@ def classify(snapshot):
 
 
 class LensSession:
-    def __init__(self, image_bytes, window_factory=None, status=None, timeout=45, uploader=None):
+    def __init__(self, image_bytes, window_factory=None, status=None, timeout=45, uploader=None, visible=False):
         self.image_bytes = image_bytes
         self.uploader = uploader or upload_image
         self.window_factory = window_factory
         self.status = status or (lambda text: None)
         self.timeout = timeout
+        self.visible = visible
         self.window = None
         self.result_url = None
         self._image_result_url = None
@@ -181,11 +182,12 @@ class LensSession:
         if self._closed.is_set():
             self.close()
             raise RuntimeError('La sessione Lens è stata chiusa.')
+        if self.visible:
+            self.window.on_top = True
+            self.window.show()
 
     def _show_consent(self, verification=True):
         if not self._consent_visible:
-            if self._consent_rounds >= 1:
-                raise RuntimeError('Google continua a richiedere il consenso. Non posso completare automaticamente questa ricerca.')
             self._consent_rounds += 1
             self._consent_visible = True
             self.window.on_top = True
@@ -239,7 +241,8 @@ class LensSession:
             browser_upload = False
             if self.result_url is not None:
                 self._navigate(followup_url(self.result_url, question))
-            elif self._browser_session:
+            elif self._browser_session or self.visible:
+                self.status('Apro Google Lens. Completa eventuali richieste nella finestra Google…')
                 browser_upload = True
                 self._navigate('https://www.google.com/imghp?hl=it')
             else:
@@ -272,7 +275,8 @@ class LensSession:
         upload_navigation_done = False
         revealed = False
         read_error_logged = False
-        if self._consent_visible:
+        consent_deadline = None
+        if self._consent_visible or self.visible:
             deadline = time.monotonic() + 180
         while time.monotonic() < deadline and not self._closed.is_set() and not self._cancelled.is_set():
             try:
@@ -313,13 +317,16 @@ class LensSession:
                 self._browser_session = True
                 if not self._consent_visible:
                     self._show_consent()
-                    deadline = time.monotonic() + 180
+                    if consent_deadline is None:
+                        consent_deadline = time.monotonic() + 180
+                    deadline = consent_deadline
                 allow_upload = True
                 uploaded_in_view = False
             elif self._consent_visible and state != 'loading':
                 # Consent has finished in this exact WebView/cookie context.
-                self.window.hide()
-                self.window.on_top = False
+                if not self.visible:
+                    self.window.hide()
+                    self.window.on_top = False
                 self._consent_visible = False
                 deadline = time.monotonic() + self.timeout
                 self.status('Consenso completato. Attendo i risultati di Lens…')
@@ -353,7 +360,8 @@ class LensSession:
                     self.result_url = snapshot['url'] if is_image_result_url(snapshot['url']) else self._image_result_url
                     if not self.result_url:
                         raise RuntimeError('Lens non ha mantenuto il riferimento all’immagine dopo il consenso.')
-                    self.window.hide()
+                    if not self.visible:
+                        self.window.hide()
                     return dict(text=snapshot.get('text', ''), links=snapshot.get('links', []))
                 previous = signature
             else:

@@ -36,7 +36,10 @@ with sync_playwright() as runner:
                     document.cookie='fixture_consent=accepted; Domain=.google.com; Path=/; Secure; SameSite=Lax';
                     location.href='https://www.google.com/imghp';">Accept (fixture)</button>''')
         elif target.hostname == 'www.google.com' and target.path == '/imghp':
-            route.fulfill(status=200, content_type='text/html; charset=utf-8', body='<title>Google</title><main>Search by image<input type="file"></main>')
+            if not accepted:
+                redirect(CONSENT)
+            else:
+                route.fulfill(status=200, content_type='text/html; charset=utf-8', body='<title>Google</title><main>Search by image<input type="file"></main>')
         elif target.hostname == 'lens.google.com' and target.path == '/v3/upload':
             assert accepted, 'The upload did not use the consented browser context'
             assert request.method == 'POST'
@@ -68,8 +71,9 @@ with sync_playwright() as runner:
         def show(self):
             self.show_count += 1
             # Test-only simulated human click. The application never clicks consent.
-            self.page.locator('#accept').click()
-            self.page.wait_for_url('https://www.google.com/imghp')
+            if self.page.locator('#accept').count():
+                self.page.locator('#accept').click()
+                self.page.wait_for_url('https://www.google.com/imghp')
         def hide(self): pass
         def destroy(self): self.page.close()
     def blocked_upload(data):
@@ -93,4 +97,16 @@ with sync_playwright() as runner:
         print('PASS: stored consent continues without another visible prompt on a new capture')
     finally:
         next_session.close()
+    context.clear_cookies()
+    def unused_upload(data):
+        raise AssertionError('Visible Lens must upload through its own browser session')
+    visible_session = LensSession(image.getvalue(), window_factory=View, uploader=unused_upload, timeout=10, visible=True)
+    try:
+        result = visible_session.query('Spiega il risultato visibile')
+        assert 'Spiega il risultato visibile' in result['text']
+        assert len(views) == 3 and len(uploads) == 3
+        assert views[2].show_count >= 1 and not views[2].page.is_closed()
+        print('PASS: clicking Lens opens the visible window, consent and upload use that context, results stay open')
+    finally:
+        visible_session.close()
         browser.close()

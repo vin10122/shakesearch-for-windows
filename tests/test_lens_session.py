@@ -11,6 +11,35 @@ SNAPSHOT = dict(url=URL, title='Google Lens', text='Results read from Lens, not 
 
 
 class LensSessionTests(unittest.TestCase):
+    def test_visible_lens_uploads_in_same_window_and_stays_open_for_results(self):
+        window = Mock()
+        window.get_current_url.return_value = URL
+        landing = dict(url='https://www.google.com/imghp', complete=True, landing=True, text='')
+        window.evaluate_js.side_effect = [landing, SNAPSHOT, SNAPSHOT, SNAPSHOT, SNAPSHOT]
+        uploader = Mock()
+        factory = Mock(return_value=window)
+        session = LensSession(b'image', window_factory=factory, uploader=uploader, visible=True)
+        with patch.object(session, '_upload_in_browser') as upload, patch('lens_session.time.sleep'):
+            self.assertEqual(session.query('Cos’è?')['text'], SNAPSHOT['text'])
+        factory.assert_called_once()
+        self.assertEqual(factory.call_args.kwargs['url'], 'https://www.google.com/imghp?hl=it')
+        uploader.assert_not_called()
+        upload.assert_called_once()
+        window.show.assert_called()
+        window.hide.assert_not_called()
+
+    def test_repeated_consent_uses_same_window_instead_of_rejecting_request(self):
+        window = Mock()
+        window.get_current_url.return_value = URL
+        challenge = dict(SNAPSHOT, url='https://consent.google.com/m')
+        window.evaluate_js.side_effect = [challenge, SNAPSHOT, challenge, SNAPSHOT, SNAPSHOT, SNAPSHOT]
+        factory = Mock(return_value=window)
+        session = LensSession(b'image', window_factory=factory, uploader=Mock(return_value=URL))
+        with patch('lens_session.time.sleep'):
+            self.assertEqual(session.query()['text'], SNAPSHOT['text'])
+        factory.assert_called_once()
+        self.assertEqual(window.show.call_count, 2)
+
     def test_consent_window_stays_visible_while_redirect_is_loading(self):
         window = Mock()
         window.get_current_url.return_value = URL

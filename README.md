@@ -138,14 +138,12 @@ request failures and truncated text are shown in the window.
 ## Google Lens in the chat (experimental)
 
 Enter an optional question in **Cerca con Google Lens** and click **Invia a Lens**.
-ShakeSearch keeps its chat open and sends the captured PNG directly from Python
-to Google Lens using an HTTP multipart request. It waits for a response containing
-an image-search session, then reads that result in a hidden, isolated renderer
-and sends its text and source links to the configured Groq API for a concise
-answer to your question. Original source links remain visible in the chat.
-The upload does
-not use a browser file input or a local upload page.
-It does not open the default browser, minimize the chat or close the panel.
+This opens the internal Google Lens window immediately. Complete any consent,
+sign-in or verification request there. ShakeSearch automatically uploads the
+captured image from that same browser session, reads the resulting text and
+source links, and sends them to the configured Groq API for interpretation.
+The Lens window stays visible, including after results arrive, so you can
+interact with Google directly. The chat and original source links remain available.
 
 Lens runs in a separate process with one internal window created at startup.
 The chat submits requests and checks their progress without waiting inside its
@@ -170,21 +168,16 @@ chat reports that problem without opening another window. If no
 readable results are found, the chat reports an error. No additional API
 key or public image-hosting service is used; the image is sent directly to Google.
 
-The hidden Google reader has no access to ShakeSearch's application API. It stays
-hidden during normal searches. If Google requires consent, access or a human
-verification, ShakeSearch shows that same internal window once and waits for your
-choice. It never chooses a consent option or solves a verification for you.
-Consent dialogs embedded in the Google results page are detected as well. The
-window stays visible through loading redirects until a readable page arrives.
-If the hidden reader cannot identify results before its initial timeout, it shows
-the same window once and keeps reading for up to three more minutes, allowing
-you to see and complete an unrecognized Google prompt.
+The Google window has no access to ShakeSearch's application API. ShakeSearch
+never chooses consent options or solves a verification for you. Consent prompts
+on Google's own results page are detected too. A repeated prompt reuses the
+same window instead of rejecting the request because consent was already shown.
+Consent waiting is bounded; redirects do not continually renew its time limit.
 
-After you finish, ShakeSearch keeps the authorized WebView session, hides the
-window and automatically submits the selected image from Google's own page if
-needed. The response is read back into the chat from that same session. It does
-not switch back to a separate HTTP cookie jar after consent. Closing the consent
-window cancels the pending request; closing the chat also closes the internal reader.
+The image is submitted from Google's page using the WebView's own cookies.
+Cookies are not transferred back to a separate HTTP client after consent.
+Closing the Lens window cancels a pending search; closing the chat stops its
+Lens process as well.
 
 Google's consent choice is retained in ShakeSearch's dedicated WebView profile
 under `%LOCALAPPDATA%\ShakeSearch\LensProfile` on Windows, separately from the

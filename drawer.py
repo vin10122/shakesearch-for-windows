@@ -362,7 +362,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div class="lens-search">
       <label for="lensQuestion">Cerca con Google Lens</label>
       <textarea id="lensQuestion" maxlength="500" placeholder="Domanda facoltativa, per esempio: dove posso comprarlo?"></textarea>
-      <span>Lens cerca l’immagine; l’AI interpreta i risultati nella chat. Il ritaglio viene inviato a Google e i risultati all’API configurata.</span>
+      <span>Si apre la finestra Lens: completa lì eventuali richieste di consenso. L’AI interpreta i risultati nella chat. Il ritaglio va a Google e i risultati all’API configurata.</span>
       <label><input type="checkbox" id="lensChatMode"> Usa Lens per le prossime domande</label>
       <button class="btn-action" id="sendToLensButton" onclick="sendToLens()">Invia a Lens</button>
       <span id="lensStatus" role="status" aria-live="polite"></span>
