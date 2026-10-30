@@ -61,7 +61,7 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
 - Click and drag to draw a circle around the area you want to select.
 - Nearby visible rectangles are detected locally and the selection snaps to their edges.
 - Hold Shift when releasing the mouse to keep a free selection.
-- Before confirming, drag the orange handles at the corners or along any edge to refine the rectangle.
+- Before confirming, drag the ultramarine-blue handles at the corners or along any edge to refine the rectangle.
 - Press Enter to confirm the selection, or Esc to cancel and try again.
 - A drawer window opens showing the captured image and AI suggestions.
 - Type a question in the input box at the bottom to ask about the image.
@@ -81,10 +81,11 @@ saved locally in `%LOCALAPPDATA%\ShakeSearch\settings.json` on Windows.
 | File | Description |
 |------|-------------|
 | shakesearch.py | Main application: input listeners, Qt screen capture, session management |
-| overlay.py | Qt selection overlay and orange plasma animation |
+| overlay.py | Qt selection overlay and ultramarine-blue plasma animation |
 | rectangle_snap.py | Local rectangle detection and selection alignment |
 | drawer.py | Drawer window: image preview, AI chat |
 | localization.py | Italian/English interface catalog and saved language preference |
+| window_shape.py | Native rounded drawer clipping on Windows to remove the outer rectangular backing |
 | ocr_viewer.py | Image viewer with editable text recognition and clipboard support |
 | image_clipboard.py | Windows clipboard image transfer (DIB and PNG) |
 | lens_upload.py | Direct Python multipart upload and Lens response validation |
@@ -100,9 +101,14 @@ saved locally in `%LOCALAPPDATA%\ShakeSearch\settings.json` on Windows.
 
 ## Capture animation
 
-The capture overlay uses Qt (PySide6). On each monitor, an orange plasma wave
+The interface uses a ultramarine-blue accent (`#3447B8`) and a dark blue-gray container
+(`#22262D`), with matching colors in the image text viewer and capture overlay.
+On Windows, the native drawer is clipped to the rounded panel so the surrounding
+rectangle does not cover the desktop. Fullscreen restores the full window area.
+
+The capture overlay uses Qt (PySide6). On each monitor, an ultramarine-blue plasma wave
 moves from the edges to the center, returns to the edges, then fades to a thin
-orange perimeter line with a continuously moving highlight. The sequence takes
+ultramarine-blue perimeter line with a continuously moving highlight. The sequence takes
 2.8 seconds and requests a frame every 7 ms (about 144 updates per second, subject
 to display refresh rate and rendering performance). Selection stays available
 throughout. After the opening sequence, only the border area is repainted. Screenshots remain at their native resolution, including on mixed-DPI
@@ -122,7 +128,7 @@ nearby screen edges and aligns the selection when it finds a close match, includ
 rectangles with rounded corners. If no reliable match is found, your original
 selection is kept. Hold **Shift when releasing the mouse** to skip alignment.
 
-Before pressing **Enter**, drag any orange corner handle or edge to adjust the
+Before pressing **Enter**, drag any ultramarine-blue corner handle or edge to adjust the
 selection. Manual adjustments are kept without snapping again. The selection
 stays within the screen and cannot shrink below 25 logical pixels per side.
 Nothing is sent to the chat until you confirm with Enter; Esc clears the selection.

@@ -50,9 +50,11 @@ class OverlayTests(unittest.TestCase):
             image = self.overlay.grab().toImage()
             self.assertFalse(image.isNull())
             if progress == 1:
-                self.assertGreater(image.pixelColor(2, 240).red(), 200)
+                self.assertGreater(image.pixelColor(2, 240).blue(), 100)
+                self.assertGreater(image.pixelColor(2, 240).blue(), image.pixelColor(2, 240).red())
                 interior = image.pixelColor(35, 240)
-                self.assertLess(interior.red(), 100)  # no orange halo remains
+                background = self.overlay.static_background.toImage().pixelColor(70, 480)
+                self.assertEqual(interior, background)  # no glow remains inside the border
         self.assertGreater(sizes[0], sizes[1])
         self.assertGreater(sizes[1], sizes[2])
         self.assertGreater(sizes[3], sizes[2])

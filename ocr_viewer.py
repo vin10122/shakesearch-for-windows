@@ -156,17 +156,17 @@ class ImageTextWindow(QMainWindow):
         self._closing = False
         self._task = None
         self.setStyleSheet('''
-            QMainWindow, QWidget { background: #201812; color: #fdf8f5; }
-            QPushButton { background: #493022; border: 1px solid #af632f;
+            QMainWindow, QWidget { background: #22262d; color: #eef2f8; }
+            QPushButton { background: #303963; border: 1px solid #566ade;
                           border-radius: 8px; padding: 9px 12px; }
-            QPushButton:hover { background: #63402c; }
-            QPushButton:disabled { color: #897c72; border-color: #504037; }
-            QPlainTextEdit { background: #2c221c; border: 1px solid #754526;
+            QPushButton:hover { background: #3d4b85; }
+            QPushButton:disabled { color: #a0afbf; border-color: #46515f; }
+            QPlainTextEdit { background: #2b313b; border: 1px solid #485796;
                              border-radius: 8px; padding: 10px; font-size: 15px; }
-            QScrollArea { border: 1px solid #754526; border-radius: 8px; }
-            QLabel#windowTitle { color: #ff944d; font-size: 15px; font-weight: bold; }
-            QPushButton#windowClose:hover { background: #8c3328; }
-            QSizeGrip { background: #201812; width: 16px; height: 16px; }
+            QScrollArea { border: 1px solid #485796; border-radius: 8px; }
+            QLabel#windowTitle { color: #a8b6ff; font-size: 15px; font-weight: bold; }
+            QPushButton#windowClose:hover { background: #653d4b; }
+            QSizeGrip { background: #22262d; width: 16px; height: 16px; }
         ''')
         root = QWidget()
         layout = QVBoxLayout(root)

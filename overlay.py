@@ -1,4 +1,4 @@
-"""Qt screen selection and orange perimeter-to-center-to-perimeter animation."""
+"""Qt screen selection and blue perimeter-to-center-to-perimeter animation."""
 import math
 from localization import tr, get_language
 
@@ -8,7 +8,7 @@ from PySide6.QtGui import QColor, QConicalGradient, QImage, QPainter, QPainterPa
 from PySide6.QtWidgets import QWidget
 from rectangle_snap import RectangleSnapTask
 
-AMBER = QColor('#ff944d')
+ACCENT = QColor('#3447b8')
 ANIMATION_MS = 2800
 FRAME_INTERVAL_MS = 7  # About 144 updates/s; actual presentation depends on the display.
 MIN_SELECTION_SIZE = 25
@@ -64,7 +64,7 @@ class AnimatedScreenOverlay(QWidget):
         # full desktop every frame. Native pixels remain untouched for cropping.
         self.static_background = self.background.copy()
         painter = QPainter(self.static_background)
-        painter.fillRect(self.rect(), QColor(12, 8, 5, 65))
+        painter.fillRect(self.rect(), QColor(16, 20, 27, 65))
         painter.setFont(QFont('Segoe UI', 12))
         painter.setPen(Qt.GlobalColor.white)
         painter.drawText(QRectF(0, 22, self.width(), 30), Qt.AlignmentFlag.AlignCenter,
@@ -132,7 +132,7 @@ class AnimatedScreenOverlay(QWidget):
                 path = self.plasma_path(radius, band)
                 # Layer translucent strokes for a soft glow without CPU image resizes.
                 for width, alpha in ((56, 6), (28, 12), (12, 24), (4, 115)):
-                    color = QColor(255, 105 + band * 30, 30, round(alpha * strength))
+                    color = QColor(52 + band * 15, 71 + band * 20, 184 + band * 25, round(alpha * strength))
                     pen = QPen(color, width)
                     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
                     light.setPen(pen)
@@ -142,8 +142,8 @@ class AnimatedScreenOverlay(QWidget):
             painter.drawImage(self.rect(), self.plasma_buffer)
         gradient = QConicalGradient(QPointF(self.width() / 2, self.height() / 2),
                                     self.border_phase * 360)
-        for position, color in ((0, '#ffe2b5'), (.07, '#ffc078'), (.22, '#ff944d'),
-                                (.65, '#e36b21'), (.88, '#ff944d'), (1, '#ffe2b5')):
+        for position, color in ((0, '#b8c4ff'), (.07, '#879cff'), (.22, '#3447b8'),
+                                (.65, '#28368f'), (.88, '#3447b8'), (1, '#b8c4ff')):
             gradient.setColorAt(position, QColor(color))
         painter.setPen(QPen(gradient, 2.5))
         painter.drawRoundedRect(QRectF(self.rect()).adjusted(2, 2, -2, -2), 12, 12)
@@ -152,21 +152,21 @@ class AnimatedScreenOverlay(QWidget):
             trail = QPainterPath(self.points[0])
             for point in self.points[1:]:
                 trail.lineTo(point)
-            painter.setPen(QPen(QColor(255, 130, 45, 80), 10))
+            painter.setPen(QPen(QColor(52, 71, 184, 80), 10))
             painter.drawPath(trail)
-            painter.setPen(QPen(AMBER, 3))
+            painter.setPen(QPen(ACCENT, 3))
             painter.drawPath(trail)
         if self.pending_bbox is not None:
-            painter.setPen(QPen(AMBER, 2, Qt.PenStyle.DashLine))
+            painter.setPen(QPen(ACCENT, 2, Qt.PenStyle.DashLine))
             painter.drawRect(self.pending_bbox)
-            painter.setPen(QPen(AMBER, 1.5))
-            painter.setBrush(QColor('#251910'))
+            painter.setPen(QPen(ACCENT, 1.5))
+            painter.setBrush(QColor('#252b34'))
             for point in self.selection_handles().values():
                 painter.drawRoundedRect(QRectF(point.x() - 4, point.y() - 4, 8, 8), 2, 2)
             painter.setBrush(Qt.BrushStyle.NoBrush)
             badge = QRectF(0, 0, min(400, self.width() - 24), 38)
             badge.moveCenter(QPointF(self.width() / 2, self.height() - 42))
-            painter.fillRect(badge, QColor('#201610'))
+            painter.fillRect(badge, QColor('#22262d'))
             painter.setPen(Qt.GlobalColor.white)
             caption = tr('Drag edges to adjust · Enter to confirm', self.language)
             if self._snap_pending:

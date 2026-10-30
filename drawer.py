@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from image_clipboard import copy_image_to_clipboard
 from lens_process import LensProcessClient
 from lens_answer import answer_from_lens
+from window_shape import install_drawer_shape
 from localization import get_language, set_language as save_language, catalog, tr, response_language
 
 load_dotenv()
@@ -39,14 +40,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <meta charset="utf-8">
 <style>
   :root {
-    --bg-glass: rgba(26, 20, 16, 0.88);
-    --border-glass: rgba(255, 140, 60, 0.38);
-    --primary-orange: #ff944d;
-    --primary-orange-light: #ffb077;
-    --card-surface: rgba(44, 34, 28, 0.78);
-    --card-hover: rgba(60, 46, 38, 0.92);
-    --text-primary: #fdf8f5;
-    --text-secondary: #bfaea5;
+    --bg-glass: rgba(34, 38, 45, 0.96);
+    --border-glass: rgba(86, 106, 222, 0.38);
+    --accent: #3447b8;
+    --accent-light: #a8b6ff;
+    --card-surface: rgba(43, 49, 59, 0.88);
+    --card-hover: rgba(54, 64, 78, 0.96);
+    --text-primary: #eef2f8;
+    --text-secondary: #aebbcf;
     --font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   }
 
@@ -55,7 +56,10 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     margin: 0;
     padding: 0;
     user-select: none;
+    accent-color: var(--accent);
   }
+
+  html { background: transparent; }
 
   body {
     background: transparent;
@@ -80,8 +84,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     -webkit-backdrop-filter: blur(36px);
     border: 1px solid var(--border-glass);
     border-radius: 32px;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75),
-                0 0 20px rgba(255, 140, 60, 0.16);
+    box-shadow: none;
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -120,7 +123,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 0.3px;
-    color: var(--primary-orange);
+    color: var(--accent-light);
   }
 
   .header-actions {
@@ -167,7 +170,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   .preview-wrapper {
     background: var(--card-surface);
-    border: 1px solid rgba(255, 140, 60, 0.16);
+    border: 1px solid rgba(86, 106, 222, 0.16);
     border-radius: 20px;
     padding: 8px;
     display: flex;
@@ -192,7 +195,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
   .btn-action {
     background: var(--card-surface);
-    border: 1px solid rgba(255, 140, 60, 0.18);
+    border: 1px solid rgba(86, 106, 222, 0.18);
     color: var(--text-primary);
     padding: 7px 13px;
     border-radius: 18px;
@@ -206,7 +209,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
   .btn-action:hover {
     background: var(--card-hover);
-    border-color: rgba(255, 140, 60, 0.45);
+    border-color: rgba(86, 106, 222, 0.45);
   }
 
   .status-text {
@@ -227,7 +230,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
   .lens-search textarea {
     width: 100%; min-height: 56px; max-height: 140px; resize: vertical;
-    background: #201812; color: var(--text-primary);
+    background: #1c2027; color: var(--text-primary);
     border: 1px solid var(--border-glass); border-radius: 8px;
     padding: 8px; font: inherit; user-select: text;
   }
@@ -239,7 +242,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
   .chip-card {
     background: var(--card-surface);
-    border: 1px solid rgba(255, 140, 60, 0.14);
+    border: 1px solid rgba(86, 106, 222, 0.14);
     padding: 10px 14px;
     border-radius: 18px;
     font-size: 12px;
@@ -255,8 +258,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
   .chat-msg-user {
     align-self: flex-end;
-    background: var(--primary-orange);
-    color: #1a0f05;
+    background: var(--accent);
+    color: #f5f7ff;
     font-weight: 600;
     padding: 8px 14px;
     border-radius: 18px 18px 4px 18px;
@@ -266,7 +269,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   .chat-msg-ai {
     align-self: flex-start;
     background: var(--card-surface);
-    border: 1px solid rgba(255, 140, 60, 0.14);
+    border: 1px solid rgba(86, 106, 222, 0.14);
     color: var(--text-primary);
     padding: 9px 14px;
     border-radius: 18px 18px 18px 4px;
@@ -285,7 +288,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 
   .search-pill {
     background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 140, 60, 0.2);
+    border: 1px solid rgba(86, 106, 222, 0.2);
     border-radius: 28px;
     display: flex;
     align-items: center;
@@ -293,8 +296,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
   .search-pill:focus-within {
     background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 140, 60, 0.6);
-    box-shadow: 0 0 14px rgba(255, 140, 60, 0.2);
+    border-color: rgba(86, 106, 222, 0.6);
+    box-shadow: 0 0 14px rgba(86, 106, 222, 0.2);
   }
   .search-input {
     flex: 1;
@@ -313,8 +316,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     height: 34px;
     border-radius: 50%;
     border: none;
-    background: var(--primary-orange);
-    color: #1a0f05;
+    background: var(--accent);
+    color: #f5f7ff;
     font-size: 14px;
     font-weight: bold;
     cursor: pointer;
@@ -337,7 +340,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <span>✨</span> ShakeSearch
     </div>
     <div class="header-actions">
-      <select id="languageSelect" aria-label="Language / Lingua" onchange="changeLanguage(this.value)" style="background:#2c221c;color:#fdf8f5;border:1px solid #754526;border-radius:8px;padding:5px">
+      <select id="languageSelect" aria-label="Language / Lingua" onchange="changeLanguage(this.value)" style="background:#2b313b;color:#eef2f8;border:1px solid #526c85;border-radius:8px;padding:5px">
         <option value="it">Italiano</option><option value="en">English</option>
       </select>
       <button class="btn-icon" id="btnToggleFs" title="Schermo intero (F11)" data-i18n-title="Schermo intero (F11)" onclick="toggleFs()">⛶</button>
@@ -470,7 +473,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
             anchor.href = url.href;
             anchor.target = '_blank';
             anchor.rel = 'noopener noreferrer';
-            anchor.style.color = '#ffb077';
+            anchor.style.color = '#a8b6ff';
             anchor.textContent = link.title;
             answer.appendChild(document.createElement('br'));
             answer.appendChild(anchor);
@@ -604,6 +607,7 @@ class DrawerApi:
         except OSError:
             self.image_bytes = None
         self.initial_geom = initial_geom
+        self._fullscreen = False
         self.conversation_history = []
         self.is_first_prompt = True
         self.client = None
@@ -642,6 +646,7 @@ class DrawerApi:
         global GLOBAL_WINDOW
         if GLOBAL_WINDOW:
             try:
+                self._fullscreen = not self._fullscreen
                 GLOBAL_WINDOW.toggle_fullscreen()
             except Exception as e:
                 print(f"Errore toggle fullscreen: {e}")
@@ -879,8 +884,10 @@ def run_drawer_app(image_path, x, y, width, height):
         easy_drag=False,
         on_top=True,
         transparent=True,
-        background_color='#000000'
+        background_color='#22262d',
+        shadow=False
     )
+    GLOBAL_WINDOW.events.before_show += lambda: install_drawer_shape(GLOBAL_WINDOW, lambda: api._fullscreen)
     GLOBAL_WINDOW.events.loaded += on_loaded
     GLOBAL_WINDOW.events.closed += api._close_lens_session
     # A dedicated app profile retains Google's consent choice between captures.
