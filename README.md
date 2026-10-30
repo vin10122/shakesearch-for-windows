@@ -17,7 +17,7 @@ Circle to Search is Google's visual search feature for supported Android phones.
 
 Google explains the original Android feature in its [introduction to Circle to Search](https://blog.google/products/search/google-circle-to-search-android/). ShakeSearch takes inspiration from its screen selection gesture and is developed independently of Google.
 
-ShakeSearch currently provides AI-generated explanations and answers about the selected content. An experimental **Invia a Lens** option reads Google Lens results into the ShakeSearch chat through an internal web session. **Built-in image search is coming soon.**
+ShakeSearch currently provides AI-generated explanations and answers about the selected content. The experimental **Invia a Lens** option sends the selection to Google Lens and reads available results into the ShakeSearch chat through an internal web session.
 
 It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to understand what is on your screen.
 
@@ -38,21 +38,29 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
 
 1. Download or clone this repository:
 
-   git clone https://github.com/vin10122/shakesearch-windows.git
-   cd shakesearch-windows
+   ```powershell
+   git clone https://github.com/vin10122/shakesearch-for-windows.git
+   cd shakesearch-for-windows
+   ```
 
 2. Install the Python dependencies:
 
-   pip install -r requirements.txt
+   ```powershell
+   python -m pip install -r requirements.txt
+   ```
 
 3. Create a file named `.env` in the project folder with your Groq API key:
 
+   ```env
    GROQ_API_KEY=your_api_key_here
    GROQ_MODEL=qwen/qwen3.8-27b
+   ```
 
 4. Run the application:
 
+   ```powershell
    python shakesearch.py
+   ```
 
 ## How to use
 
@@ -101,7 +109,7 @@ saved locally in `%LOCALAPPDATA%\ShakeSearch\settings.json` on Windows.
 
 ## Capture animation
 
-The interface uses a ultramarine-blue accent (`#3447B8`) and a dark blue-gray container
+The interface uses an ultramarine-blue accent (`#3447B8`) and a dark blue-gray container
 (`#22262D`), with matching colors in the image text viewer and capture overlay.
 On Windows, the native drawer is clipped to the rounded panel so the surrounding
 rectangle does not cover the desktop. Fullscreen restores the full window area.
