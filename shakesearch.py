@@ -431,4 +431,4 @@ class AnimatedScreenOverlay:
 
 
 if __name__ == "__main__":
-    MagicPointer().run()
+    ShakeSearch().run()

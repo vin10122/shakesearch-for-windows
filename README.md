@@ -25,6 +25,7 @@ The project name "ShakeSearch" was chosen to avoid any trademark conflict. Circl
 
 - Windows 10 or Windows 11
 - Python 3.10 or newer
+- Microsoft Edge WebView2 Runtime (required by the chat window on Windows)
 - A free Groq API key from https://console.groq.com/
 
 ## Installation
