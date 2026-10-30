@@ -1,5 +1,6 @@
 """ShakeSearch desktop entry point. Qt owns all capture and animation windows."""
 import logging
+from localization import tr
 from logging.handlers import RotatingFileHandler
 import math
 import os
@@ -109,7 +110,7 @@ class ShakeSearch(QObject):
         except Exception:
             logger.exception("Unable to open capture overlay")
             QMessageBox.critical(None, "ShakeSearch",
-                                 "Unable to open screen capture. Details: " + LOG_PATH)
+                                 tr("Unable to open screen capture. Details: ") + LOG_PATH)
 
     def capture_all_screens(self):
         # Qt supplies logical geometry and native-resolution pixels for mixed-DPI screens.
@@ -191,7 +192,7 @@ class MultiScreenOverlayManager:
                                   str(width), str(height)], stdout=log, stderr=log)
         except Exception:
             logger.exception("Unable to launch chat drawer")
-            QMessageBox.critical(None, "ShakeSearch", "Unable to open chat. Details: " + LOG_PATH)
+            QMessageBox.critical(None, "ShakeSearch", tr("Unable to open chat. Details: ") + LOG_PATH)
             return
         self.selection_done = True
         self.close_overlays()

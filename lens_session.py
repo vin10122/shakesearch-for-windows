@@ -11,6 +11,7 @@ from PIL import Image
 
 from lens_upload import ConsentRequired, upload_image, result_url as is_image_result_url
 from lens_handoff import LENS_UPLOAD_URL
+from localization import get_language, google_language_url
 logger = logging.getLogger('shakesearch')
 
 READ_RESULTS = r'''(() => {
@@ -146,6 +147,7 @@ class LensSession:
         self.status = status or (lambda text: None)
         self.timeout = timeout
         self.visible = visible
+        self.language = get_language()
         self.window = None
         self.result_url = None
         self._image_result_url = None
@@ -160,6 +162,8 @@ class LensSession:
     def _navigate(self, target):
         if not google_url(target):
             raise RuntimeError('La finestra Lens può aprire soltanto pagine Google autorizzate.')
+        if self.visible and urlsplit(target).hostname in {'www.google.com', 'lens.google.com'}:
+            target = google_language_url(target, self.language)
         if self.window is None:
             factory = self.window_factory
             if factory is None:
@@ -202,7 +206,7 @@ class LensSession:
             output = io.BytesIO()
             image.save(output, 'PNG')
             payload = dict(image=base64.b64encode(output.getvalue()).decode('ascii'),
-                           width=image.width, height=image.height, target=LENS_UPLOAD_URL)
+                           width=image.width, height=image.height, target=google_language_url(LENS_UPLOAD_URL, self.language))
         data = json.dumps(payload).replace('<', '\\u003c')
         script = r'''(() => {
           if (location.protocol !== 'https:' || !['www.google.com', 'lens.google.com'].includes(location.hostname))
@@ -233,6 +237,7 @@ class LensSession:
         if not isinstance(question, str) or len(question) > 500:
             raise ValueError('Scrivi una domanda di massimo 500 caratteri.')
         with self._lock:
+            self.language = get_language()
             if self._closed.is_set():
                 raise RuntimeError('La sessione Lens è stata chiusa.')
             self._cancelled.clear()

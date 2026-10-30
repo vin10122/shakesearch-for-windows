@@ -69,6 +69,13 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
 - Click **Apri immagine per copiare testo** to open the image alongside its recognized text.
 - To query Lens in the chat, add an optional question under **Cerca con Google Lens** and click **Invia a Lens**. Leave **Usa Lens per le prossime domande** checked to send follow-up questions about the same image.
 
+Choose **Italiano** or **English** from the selector at the top of the chat.
+The chat controls change immediately, and new capture overlays and text-viewer
+windows use the saved language. AI answers, suggestions and the language requested
+from Google Lens follow this choice. Existing messages and text transcribed from
+images keep their original content. Italian is the default; the preference is
+saved locally in `%LOCALAPPDATA%\ShakeSearch\settings.json` on Windows.
+
 ## Files
 
 | File | Description |
@@ -77,6 +84,7 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
 | overlay.py | Qt selection overlay and orange plasma animation |
 | rectangle_snap.py | Local rectangle detection and selection alignment |
 | drawer.py | Drawer window: image preview, AI chat |
+| localization.py | Italian/English interface catalog and saved language preference |
 | ocr_viewer.py | Image viewer with editable text recognition and clipboard support |
 | image_clipboard.py | Windows clipboard image transfer (DIB and PNG) |
 | lens_upload.py | Direct Python multipart upload and Lens response validation |
@@ -225,6 +233,7 @@ python -m playwright install chromium
 python tests/check_lens_chat_browser.py
 python tests/check_lens_reader_browser.py
 python tests/check_lens_consent_browser.py
+python tests/check_language_browser.py
 ```
 
 ## License

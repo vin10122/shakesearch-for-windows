@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from image_clipboard import copy_image_to_clipboard
 from lens_process import LensProcessClient
 from lens_answer import answer_from_lens
+from localization import get_language, set_language as save_language, catalog, tr, response_language
 
 load_dotenv()
 
@@ -33,7 +34,7 @@ CHAT_SYSTEM_PROMPT = (
 
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
 <meta charset="utf-8">
 <style>
@@ -336,52 +337,83 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <span>✨</span> ShakeSearch
     </div>
     <div class="header-actions">
-      <button class="btn-icon" id="btnToggleFs" title="Fullscreen (F11)" onclick="toggleFs()">⛶</button>
-      <button class="btn-icon" title="Close (Esc)" onclick="pywebview.api.close_window()">✕</button>
+      <select id="languageSelect" aria-label="Language / Lingua" onchange="changeLanguage(this.value)" style="background:#2c221c;color:#fdf8f5;border:1px solid #754526;border-radius:8px;padding:5px">
+        <option value="it">Italiano</option><option value="en">English</option>
+      </select>
+      <button class="btn-icon" id="btnToggleFs" title="Schermo intero (F11)" data-i18n-title="Schermo intero (F11)" onclick="toggleFs()">⛶</button>
+      <button class="btn-icon" title="Chiudi (Esc)" data-i18n-title="Chiudi (Esc)" onclick="pywebview.api.close_window()">✕</button>
     </div>
   </div>
 
   <div class="content-area" id="contentArea">
     <div class="preview-wrapper">
-      <img id="cropPreview" src="" alt="Selection">
+      <img id="cropPreview" src="" alt="Selezione" data-i18n-alt="Selezione">
     </div>
 
     <div class="actions-row">
       <button class="btn-action" id="copyImageButton" onclick="copyImage()">
-        📋 Copia immagine
+        📋 <span data-i18n="Copia immagine">Copia immagine</span>
       </button>
       <button class="btn-action" id="openTextImage" onclick="openImageForText()">
-        Apri immagine per copiare testo
+        <span data-i18n="Apri immagine per copiare testo">Apri immagine per copiare testo</span>
       </button>
       <button class="btn-action" onclick="toggleFs()">
-        <span id="fsActionLabel">⛶ Fullscreen</span>
+        <span id="fsActionLabel">⛶ Schermo intero</span>
       </button>
       <span class="status-text" id="copyImageStatus" role="status" aria-live="polite"></span>
     </div>
 
     <div class="lens-search">
-      <label for="lensQuestion">Cerca con Google Lens</label>
-      <textarea id="lensQuestion" maxlength="500" placeholder="Domanda facoltativa, per esempio: dove posso comprarlo?"></textarea>
-      <span>Si apre la finestra Lens: completa lì eventuali richieste di consenso. L’AI interpreta i risultati nella chat. Il ritaglio va a Google e i risultati all’API configurata.</span>
-      <label><input type="checkbox" id="lensChatMode"> Usa Lens per le prossime domande</label>
-      <button class="btn-action" id="sendToLensButton" onclick="sendToLens()">Invia a Lens</button>
+      <label for="lensQuestion" data-i18n="Cerca con Google Lens">Cerca con Google Lens</label>
+      <textarea id="lensQuestion" maxlength="500" placeholder="Domanda facoltativa, per esempio: dove posso comprarlo?" data-i18n-placeholder="Domanda facoltativa, per esempio: dove posso comprarlo?"></textarea>
+      <span data-i18n="Si apre la finestra Lens: completa lì eventuali richieste di consenso. L’AI interpreta i risultati nella chat. Il ritaglio va a Google e i risultati all’API configurata.">Si apre la finestra Lens: completa lì eventuali richieste di consenso. L’AI interpreta i risultati nella chat. Il ritaglio va a Google e i risultati all’API configurata.</span>
+      <label><input type="checkbox" id="lensChatMode"> <span data-i18n="Usa Lens per le prossime domande">Usa Lens per le prossime domande</span></label>
+      <button class="btn-action" id="sendToLensButton" onclick="sendToLens()" data-i18n="Invia a Lens">Invia a Lens</button>
       <span id="lensStatus" role="status" aria-live="polite"></span>
     </div>
 
-    <div class="status-text" id="statusText">⏳ Analyzing selection...</div>
+    <div class="status-text" id="statusText" data-i18n="⏳ Analisi della selezione…">⏳ Analisi della selezione…</div>
     <div class="chips-container" id="chipsContainer"></div>
     <div class="chat-box" id="chatBox"></div>
   </div>
 
   <div class="footer">
     <div class="search-pill">
-      <input type="text" id="queryInput" class="search-input" placeholder="Ask anything or circle..." onkeydown="if(event.key==='Enter') sendPrompt()">
+      <input type="text" id="queryInput" class="search-input" placeholder="Chiedi qualcosa o cerchia…" data-i18n-placeholder="Chiedi qualcosa o cerchia…" onkeydown="if(event.key==='Enter') sendPrompt()">
       <button class="btn-send" onclick="sendPrompt()">➔</button>
     </div>
   </div>
 </div>
 
 <script>
+  let translations = {};
+  let uiLanguage = 'it';
+  function t(text) { return translations[text] || text; }
+  function applyLanguage(settings) {
+    uiLanguage = settings.language;
+    translations = settings.translations;
+    document.documentElement.lang = uiLanguage;
+    document.getElementById('languageSelect').value = uiLanguage;
+    document.querySelectorAll('[data-i18n]').forEach(node => { node.textContent = t(node.dataset.i18n); });
+    for (const attribute of ['placeholder', 'title', 'alt']) {
+      document.querySelectorAll('[data-i18n-' + attribute + ']').forEach(node => {
+        node.setAttribute(attribute, t(node.getAttribute('data-i18n-' + attribute)));
+      });
+    }
+    document.getElementById('fsActionLabel').textContent = t(isFullscreen ? '🗗 Finestra' : '⛶ Schermo intero');
+  }
+  async function changeLanguage(language) {
+    const selector = document.getElementById('languageSelect');
+    selector.disabled = true;
+    try {
+      const settings = await pywebview.api.set_language(language);
+      if (!settings.ok) throw new Error(settings.error);
+      applyLanguage(settings);
+    } catch (_) {
+      selector.value = uiLanguage;
+      setStatus(t('Impossibile salvare la lingua. Controlla i permessi della cartella delle preferenze.'));
+    } finally { selector.disabled = false; }
+  }
   let isFullscreen = false;
 
   let replyCounter = 0;
@@ -397,14 +429,14 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     answer.id = 'reply-' + (++replyCounter);
     answer.style.whiteSpace = 'pre-wrap';
     answer.style.userSelect = 'text';
-    answer.textContent = source === 'lens' ? 'Ricerca su Google Lens…' : '…';
+    answer.textContent = source === 'lens' ? t('Ricerca su Google Lens…') : '…';
     chatBox.appendChild(answer);
     chatBox.scrollTop = chatBox.scrollHeight;
     return answer.id;
   }
 
   async function askLens(text) {
-    const id = createChatTurn(text || 'Cerca questa immagine con Lens', 'lens');
+    const id = createChatTurn(text || t('Cerca questa immagine con Lens'), 'lens');
     const answer = document.getElementById(id);
     const started = Date.now();
     const bridgeCall = promise => new Promise((resolve, reject) => {
@@ -419,17 +451,17 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         while (true) {
           if (Date.now() - started > 350000) throw new Error('Lens timeout');
           const state = await bridgeCall(pywebview.api.poll_lens(ticket.job_id));
-          document.getElementById('lensStatus').textContent = state.status || '';
+          document.getElementById('lensStatus').textContent = t(state.status || '');
           if (state.done) { result = state.result; break; }
-          answer.textContent = (state.status || 'Attendo Google Lens…') + '\n' + Math.floor((Date.now() - started) / 1000) + ' s';
+          answer.textContent = (t(state.status || 'Attendo Google Lens…')) + '\n' + Math.floor((Date.now() - started) / 1000) + ' s';
           await new Promise(resolve => setTimeout(resolve, 250));
         }
       }
       if (!result.ok) {
-        answer.textContent = result.error;
+        answer.textContent = t(result.error);
       } else {
-        answer.textContent = (result.interpreted ? 'Risposta AI basata sui risultati Lens\n\n' : 'Google Lens\n\n') + result.text;
-        if (result.warning) answer.textContent += '\n\n' + result.warning;
+        answer.textContent = (result.interpreted ? t('Risposta AI basata sui risultati Lens') + '\n\n' : 'Google Lens\n\n') + result.text;
+        if (result.warning) answer.textContent += '\n\n' + t(result.warning);
         for (const link of result.links || []) {
           try {
             const url = new URL(link.url);
@@ -446,8 +478,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
         }
       }
     } catch (error) {
-      document.getElementById('lensStatus').textContent = 'Richiesta Lens interrotta.';
-      updateAiResponse('Lens non ha completato la richiesta. Puoi riprovare; dettagli in %TEMP%\\shakesearch.log.', id);
+      document.getElementById('lensStatus').textContent = t('Richiesta Lens interrotta.');
+      updateAiResponse(t('Lens non ha completato la richiesta. Puoi riprovare; dettagli in %TEMP%\\shakesearch.log.'), id);
       // Do not wait for another bridge call if the bridge itself is stalled.
       try { Promise.resolve(pywebview.api.cancel_lens()).catch(() => {}); } catch (_) {}
     }
@@ -468,12 +500,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const button = document.getElementById('copyImageButton');
     const status = document.getElementById('copyImageStatus');
     button.disabled = true;
-    status.textContent = 'Copia in corso…';
+    status.textContent = t('Copia in corso…');
     try {
       const result = await pywebview.api.copy_image();
-      status.textContent = result.ok ? 'Immagine copiata negli appunti.' : result.error;
+      status.textContent = result.ok ? t('Immagine copiata negli appunti.') : t(result.error);
     } catch (error) {
-      status.textContent = 'Impossibile copiare l’immagine. Riprova.';
+      status.textContent = t('Impossibile copiare l’immagine. Riprova.');
     } finally {
       button.disabled = false;
     }
@@ -484,9 +516,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     button.disabled = true;
     try {
       const result = await pywebview.api.open_image_for_text();
-      if (!result.ok) setStatus(result.error);
+      if (!result.ok) setStatus(t(result.error));
     } catch (error) {
-      setStatus('Impossibile aprire l’immagine. Riprova.');
+      setStatus(t('Impossibile aprire l’immagine. Riprova.'));
     } finally {
       button.disabled = false;
     }
@@ -496,7 +528,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     isFullscreen = !isFullscreen;
     document.body.classList.toggle('is-fullscreen', isFullscreen);
     document.getElementById('btnToggleFs').innerText = isFullscreen ? '🗗' : '⛶';
-    document.getElementById('fsActionLabel').innerText = isFullscreen ? '🗗 Window' : '⛶ Fullscreen';
+    document.getElementById('fsActionLabel').innerText = t(isFullscreen ? '🗗 Finestra' : '⛶ Schermo intero');
     pywebview.api.toggle_fullscreen();
   }
 
@@ -521,7 +553,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       try {
         await pywebview.api.send_chat(text, id);
       } catch (error) {
-        updateAiResponse('Impossibile inviare la domanda. Riprova.', id);
+        updateAiResponse(t('Impossibile inviare la domanda. Riprova.'), id);
       }
     }
   }
@@ -539,7 +571,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
 
   function setSuggestions(list) {
-    document.getElementById('statusText').innerText = '✨ Related suggestions';
+    document.getElementById('statusText').dataset.i18n = '✨ Suggerimenti correlati';
+    document.getElementById('statusText').innerText = t('✨ Suggerimenti correlati');
     const c = document.getElementById('chipsContainer');
     c.innerHTML = '';
     list.forEach(txt => {
@@ -551,7 +584,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
 
   function setStatus(text) {
-    document.getElementById('statusText').innerText = text;
+    document.getElementById('statusText').removeAttribute('data-i18n');
+    document.getElementById('statusText').innerText = t(text);
   }
 </script>
 </body>
@@ -564,6 +598,7 @@ GLOBAL_WINDOW = None
 class DrawerApi:
     def __init__(self, image_path, initial_geom):
         self.image_path = image_path
+        self.language = get_language()
         try:
             self.image_bytes = Path(image_path).read_bytes()
         except OSError:
@@ -584,6 +619,18 @@ class DrawerApi:
                 self.client = Groq(api_key=GROQ_API_KEY)
             except Exception as e:
                 print(f"Errore Groq: {e}")
+
+    def language_settings(self):
+        return dict(ok=True, language=self.language, translations=catalog(self.language))
+
+    def set_language(self, language):
+        try:
+            save_language(language)
+            self.language = language
+            return self.language_settings()
+        except (OSError, ValueError):
+            logging.getLogger('shakesearch').exception('Unable to save language')
+            return dict(ok=False, error='Unable to save language')
 
     def close_window(self):
         global GLOBAL_WINDOW
@@ -672,7 +719,7 @@ class DrawerApi:
             question = job['question']
             history = list(self._lens_history)
         answer = answer_from_lens(self.client, question, result, model=GROQ_MODEL,
-                                  system_prompt=CHAT_SYSTEM_PROMPT, history=history)
+                                  system_prompt=CHAT_SYSTEM_PROMPT + ' ' + response_language(self.language), history=history)
         with self._lens_lock:
             job = self._lens_answers.get(token)
             if job is not None and job['result'] is None:
@@ -731,7 +778,7 @@ class DrawerApi:
         if not GLOBAL_WINDOW:
             return
         if not self.client:
-            GLOBAL_WINDOW.evaluate_js('updateAiResponse(' + json.dumps('Configura GROQ_API_KEY per usare le spiegazioni AI.') + ', ' + json.dumps(reply_id) + ')')
+            GLOBAL_WINDOW.evaluate_js('updateAiResponse(' + json.dumps(tr('Configura GROQ_API_KEY per usare le spiegazioni AI.', self.language)) + ', ' + json.dumps(reply_id) + ')')
             return
 
         content_payload = [{"type": "text", "text": text}]
@@ -746,7 +793,7 @@ class DrawerApi:
 
         # Costruisce la lista messaggi mantenendo il contesto precedente
         messages = [
-            {"role": "system", "content": CHAT_SYSTEM_PROMPT}
+            {"role": "system", "content": CHAT_SYSTEM_PROMPT + ' ' + response_language(self.language)}
         ]
 
         # Inserisce la cronologia precedente
@@ -771,7 +818,7 @@ class DrawerApi:
             ans_clean = json.dumps(answer)
             GLOBAL_WINDOW.evaluate_js(f"updateAiResponse({ans_clean}, {json.dumps(reply_id)})")
         except Exception as e:
-            GLOBAL_WINDOW.evaluate_js(f"updateAiResponse({json.dumps('Errore: ' + str(e))}, {json.dumps(reply_id)})")
+            GLOBAL_WINDOW.evaluate_js(f"updateAiResponse({json.dumps(tr('Errore: ', self.language) + str(e))}, {json.dumps(reply_id)})")
 
 
 def run_drawer_app(image_path, x, y, width, height):
@@ -796,6 +843,7 @@ def run_drawer_app(image_path, x, y, width, height):
                         "Provide: 1) Name or identification in one line. "
                         "2) Up to 2 quick suggestions. "
                         "Answer directly without introductory text."
+                        + ' ' + response_language(api.language)
                     )
                     comp = api.client.chat.completions.create(
                         model=GROQ_MODEL,
@@ -814,14 +862,14 @@ def run_drawer_app(image_path, x, y, width, height):
                     lines = [l.strip("-• * ") for l in comp.choices[0].message.content.strip().split("\n") if l.strip()][:3]
                     GLOBAL_WINDOW.evaluate_js(f"setSuggestions({json.dumps(lines)})")
                 except Exception as e:
-                    GLOBAL_WINDOW.evaluate_js(f"setStatus('Nota: {e}')")
+                    GLOBAL_WINDOW.evaluate_js('setStatus(' + json.dumps(tr('Nota: ', api.language) + str(e)) + ')')
 
             threading.Thread(target=fetch_sugg, daemon=True).start()
 
     api = DrawerApi(image_path, (x, y, width, height))
     GLOBAL_WINDOW = webview.create_window(
         title="ShakeSearch",
-        html=HTML_TEMPLATE,
+        html=HTML_TEMPLATE.replace('</body>', '<script>applyLanguage(' + json.dumps(api.language_settings()).replace('<', '\\u003c') + ');</script></body>'),
         js_api=api,
         width=width,
         height=height,

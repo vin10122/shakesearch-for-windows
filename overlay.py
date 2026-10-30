@@ -1,5 +1,6 @@
 """Qt screen selection and orange perimeter-to-center-to-perimeter animation."""
 import math
+from localization import tr, get_language
 
 from PIL import Image
 from PySide6.QtCore import Qt, QRectF, QPointF, QElapsedTimer, QTimer, QThreadPool, Slot
@@ -30,6 +31,7 @@ class AnimatedScreenOverlay(QWidget):
     def __init__(self, screen_data, manager):
         super().__init__(None, Qt.WindowType.FramelessWindowHint |
                          Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.language = get_language()
         self.manager = manager
         self.screen_data = screen_data
         self.background = screen_data['pixmap']
@@ -66,7 +68,7 @@ class AnimatedScreenOverlay(QWidget):
         painter.setFont(QFont('Segoe UI', 12))
         painter.setPen(Qt.GlobalColor.white)
         painter.drawText(QRectF(0, 22, self.width(), 30), Qt.AlignmentFlag.AlignCenter,
-                         'Circle anything · Esc to exit')
+                         tr('Circle anything · Esc to exit', self.language))
         painter.end()
         self.border_region = QRegion(self.rect()).subtracted(
             QRegion(self.rect().adjusted(16, 16, -16, -16)))
@@ -166,9 +168,9 @@ class AnimatedScreenOverlay(QWidget):
             badge.moveCenter(QPointF(self.width() / 2, self.height() - 42))
             painter.fillRect(badge, QColor('#201610'))
             painter.setPen(Qt.GlobalColor.white)
-            caption = 'Drag edges to adjust · Enter to confirm'
+            caption = tr('Drag edges to adjust · Enter to confirm', self.language)
             if self._snap_pending:
-                caption = 'Aligning selection… · Esc to retry'
+                caption = tr('Aligning selection… · Esc to retry', self.language)
             painter.drawText(badge, Qt.AlignmentFlag.AlignCenter, caption)
         painter.end()
 

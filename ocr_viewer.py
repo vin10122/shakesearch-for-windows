@@ -1,6 +1,7 @@
 """Image preview with editable, copyable text transcribed by Groq vision."""
 import base64
 import logging
+from localization import tr
 import os
 from pathlib import Path
 import sys
@@ -23,7 +24,7 @@ def extract_text(image_bytes):
 
     key = os.getenv('GROQ_API_KEY')
     if not key:
-        raise RuntimeError('Configura GROQ_API_KEY nel file .env e riapri la finestra.')
+        raise RuntimeError(tr('Configura GROQ_API_KEY nel file .env e riapri la finestra.'))
     model = os.getenv('GROQ_MODEL', 'qwen/qwen3.8-27b')
     uri = 'data:image/png;base64,' + base64.b64encode(image_bytes).decode('ascii')
     with Groq(api_key=key, timeout=45.0, max_retries=1) as client:
@@ -142,14 +143,14 @@ class ImageTextWindow(QMainWindow):
         self.image_bytes = image_bytes if image_bytes is not None else Path(image_path).read_bytes()
         pixmap = QPixmap()
         if not pixmap.loadFromData(self.image_bytes):
-            raise ValueError('Impossibile aprire l’immagine selezionata.')
+            raise ValueError(tr('Impossibile aprire l’immagine selezionata.'))
         # The capture flow writes PNG; normalize imported images to PNG for Groq.
         from PySide6.QtCore import QBuffer, QIODevice
         buffer = QBuffer()
         buffer.open(QIODevice.OpenModeFlag.WriteOnly)
         pixmap.save(buffer, 'PNG')
         self.image_bytes = bytes(buffer.data())
-        self.setWindowTitle('ShakeSearch · Immagine e testo')
+        self.setWindowTitle(tr('ShakeSearch · Immagine e testo'))
         self.resize(1040, 700)
         self._recognizing = False
         self._closing = False
@@ -171,23 +172,23 @@ class ImageTextWindow(QMainWindow):
         layout = QVBoxLayout(root)
         layout.setContentsMargins(18, 18, 18, 18)
         title_bar = QHBoxLayout()
-        title = WindowTitleLabel('ShakeSearch · Immagine e testo')
+        title = WindowTitleLabel(tr('ShakeSearch · Immagine e testo'))
         title_bar.addWidget(title, 1)
         self.minimize_button = QPushButton('−')
-        self.minimize_button.setToolTip('Riduci a icona')
+        self.minimize_button.setToolTip(tr('Riduci a icona'))
         self.minimize_button.clicked.connect(self.showMinimized)
         self.maximize_button = QPushButton('□')
-        self.maximize_button.setToolTip('Ingrandisci / Ripristina')
+        self.maximize_button.setToolTip(tr('Ingrandisci / Ripristina'))
         self.maximize_button.clicked.connect(self.toggle_maximized)
         self.close_button = QPushButton('×')
         self.close_button.setObjectName('windowClose')
-        self.close_button.setToolTip('Chiudi')
+        self.close_button.setToolTip(tr('Chiudi'))
         self.close_button.clicked.connect(self.close)
         for button in (self.minimize_button, self.maximize_button, self.close_button):
             button.setFixedSize(38, 34)
             title_bar.addWidget(button)
         layout.addLayout(title_bar)
-        self.status = QLabel('Lettura del testo…')
+        self.status = QLabel(tr('Lettura del testo…'))
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
@@ -201,24 +202,24 @@ class ImageTextWindow(QMainWindow):
         for caption, callback in (
                 ('−', lambda: self.preview.set_zoom(self.preview.zoom / 1.25)),
                 ('+', lambda: self.preview.set_zoom(self.preview.zoom * 1.25)),
-                ('Adatta', self.preview.fit_image)):
+                (tr('Adatta'), self.preview.fit_image)):
             button = QPushButton(caption)
             button.clicked.connect(callback)
             zoom_controls.addWidget(button)
         image_layout.addLayout(zoom_controls)
         splitter.addWidget(image_panel)
         self.text = QPlainTextEdit()
-        self.text.setPlaceholderText('Il testo riconosciuto apparirà qui. Puoi modificarlo prima di copiarlo.')
+        self.text.setPlaceholderText(tr('Il testo riconosciuto apparirà qui. Puoi modificarlo prima di copiarlo.'))
         splitter.addWidget(self.text)
         splitter.setSizes([560, 440])
         layout.addWidget(splitter, 1)
         controls = QHBoxLayout()
-        self.retry = QPushButton('Rileggi testo')
+        self.retry = QPushButton(tr('Rileggi testo'))
         self.retry.clicked.connect(self.start_recognition)
         controls.addWidget(self.retry)
         controls.addStretch()
-        self.copy = QPushButton('Copia testo')
-        self.copy.setToolTip('Copia la parte selezionata oppure tutto il testo. Puoi usare anche Ctrl+C.')
+        self.copy = QPushButton(tr('Copia testo'))
+        self.copy.setToolTip(tr('Copia la parte selezionata oppure tutto il testo. Puoi usare anche Ctrl+C.'))
         self.copy.setEnabled(False)
         self.copy.clicked.connect(self.copy_text)
         controls.addWidget(self.copy)
@@ -245,7 +246,7 @@ class ImageTextWindow(QMainWindow):
         self._recognizing = True
         self.retry.setEnabled(False)
         self.text.setReadOnly(True)
-        self.status.setText('Lettura del testo…')
+        self.status.setText(tr('Lettura del testo…'))
         self._task = RecognitionTask(self.image_bytes)
         self._task.signals.finished.connect(self.recognition_finished)
         self._task.start()
@@ -258,15 +259,15 @@ class ImageTextWindow(QMainWindow):
         self.retry.setEnabled(True)
         self.text.setReadOnly(False)
         if 'error' in result:
-            self.status.setText('Lettura non riuscita: ' + result['error'])
+            self.status.setText(tr('Lettura non riuscita: ') + result['error'])
             return
         self.text.setPlainText(result['text'])
         if result.get('truncated'):
-            self.status.setText('Testo parziale: prova con un’area più piccola. Puoi copiare la parte estratta.')
+            self.status.setText(tr('Testo parziale: prova con un’area più piccola. Puoi copiare la parte estratta.'))
         elif result['text']:
-            self.status.setText('Seleziona o correggi il testo, poi copialo. Ctrl+C copia la selezione.')
+            self.status.setText(tr('Seleziona o correggi il testo, poi copialo. Ctrl+C copia la selezione.'))
         else:
-            self.status.setText('Nessun testo riconosciuto. Prova con un’immagine più nitida.')
+            self.status.setText(tr('Nessun testo riconosciuto. Prova con un’immagine più nitida.'))
 
     @Slot()
     def copy_text(self):
@@ -274,7 +275,7 @@ class ImageTextWindow(QMainWindow):
         value = cursor.selectedText().replace('\u2029', '\n') if cursor.hasSelection() else self.text.toPlainText()
         if value:
             QApplication.clipboard().setText(value)
-            self.status.setText('Testo copiato negli appunti.')
+            self.status.setText(tr('Testo copiato negli appunti.'))
 
     def closeEvent(self, event):
         self._closing = True
