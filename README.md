@@ -12,6 +12,19 @@ ShakeSearch lets you select any area of your screen by shaking your mouse or pre
 - AI-generated suggestions about what is in the image
 - A text input to ask custom questions about the selection
 - An option to copy the captured image
+- A text viewer to extract, edit and copy text from the capture
+- An experimental Google Lens search with an optional question and follow-ups
+
+## Features
+
+- **Quick capture:** shake the mouse or press **Alt + F7**, then circle an area on any connected monitor. A moving ultramarine glow marks the screen edges during selection.
+- **Smarter selection:** nearby rectangles can snap to their edges. Hold **Shift** to skip snapping, or adjust the selection by dragging its corners and edges before pressing **Enter**.
+- **AI chat:** get suggestions and ask questions about the capture using the configured Groq vision model. The drawer can be expanded with **F11**.
+- **Copy image and text:** copy the capture to the clipboard, or open it in a separate window to recognize, edit and copy its text.
+- **Google Lens (experimental):** send the image and an optional question to Lens. Complete any Google consent in the Lens window; available results and source links appear in the chat, with an AI explanation when Groq is available. Follow-up questions can use the same image session.
+- **Italian and English:** switch languages from the chat. The choice is saved for future captures and windows.
+
+The Lens integration relies on Google web pages, which can change or require verification. Its live flow still needs verification on Windows; see the Lens section below for details.
 
 Circle to Search is Google's visual search feature for supported Android phones. It lets you circle, highlight, scribble over or tap something on the screen to search for it with Google without leaving the app you are using.
 
