@@ -29,12 +29,12 @@ def lock_profile(profile):
     return stream
 
 
-def main():
+def main(width=900, height=740, profile_name="LensProfile"):
     import webview
     from lens_session import LensSession
 
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
-    profile = Path(os.getenv('LOCALAPPDATA') or tempfile.gettempdir()) / 'ShakeSearch' / 'LensProfile'
+    profile = Path(os.getenv('LOCALAPPDATA') or tempfile.gettempdir()) / 'ShakeSearch' / profile_name
     profile.mkdir(parents=True, exist_ok=True)
     try:
         profile_lock = lock_profile(profile)
@@ -44,7 +44,7 @@ def main():
     stop = threading.Event()
     write_lock = threading.Lock()
     window = webview.create_window('ShakeSearch · Google Lens', url='about:blank',
-                                   hidden=True, js_api=None, width=900, height=740, on_top=False)
+                                   hidden=True, js_api=None, width=width, height=height, on_top=False)
     window.events.closed += stop.set
     current = {'id': None}
 
@@ -106,4 +106,4 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(main(int(sys.argv[1]), int(sys.argv[2]), sys.argv[3] if len(sys.argv) > 3 else "LensProfile") if len(sys.argv) >= 3 else main())

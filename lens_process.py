@@ -15,7 +15,9 @@ REQUEST_TIMEOUT = 300
 
 
 class LensProcessClient:
-    def __init__(self, image_bytes, process_factory=None):
+    def __init__(self, image_bytes, process_factory=None, *, window_size=(900, 740), text_viewer=False):
+        self.text_viewer = text_viewer
+        self.window_size = tuple(int(value) for value in window_size)
         self.image_bytes = image_bytes
         self.process_factory = process_factory or subprocess.Popen
         self._lock = threading.Lock()
@@ -108,7 +110,7 @@ class LensProcessClient:
                 executable = executable.with_name('python.exe')
             script = Path(__file__).with_name('lens_worker.py')
             with open(Path(tempfile.gettempdir()) / 'shakesearch.log', 'a', encoding='utf-8') as log:
-                process = self.process_factory([str(executable), str(script)], stdin=subprocess.PIPE,
+                process = self.process_factory([str(executable), str(script), str(self.window_size[0]), str(self.window_size[1]), "LensTextProfile" if self.text_viewer else "LensProfile"], stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE, stderr=log, text=True, encoding='utf-8', bufsize=1,
                     creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             self._process = process

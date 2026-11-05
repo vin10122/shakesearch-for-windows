@@ -43,29 +43,13 @@ class LanguageTests(unittest.TestCase):
     def api(self):
         path = Path(self.directory.name) / 'capture.png'
         path.write_bytes(b'capture')
-        with patch.object(drawer, 'GROQ_API_KEY', None):
+        with patch.object(drawer, 'GLOBAL_WINDOW', None):
             return drawer.DrawerApi(str(path), (0, 0, 560, 680))
 
-    def test_choice_survives_new_chat_and_controls_ai_without_losing_history(self):
+    def test_choice_survives_new_chat(self):
         api = self.api()
-        api.conversation_history.append(dict(role='user', text='Earlier question'))
         self.assertTrue(api.set_language('en')['ok'])
         self.assertEqual(self.api().language, 'en')
-        api.client = Mock()
-        api.client.chat.completions.create.return_value.choices = [Mock(message=Mock(content='Answer'))]
-        with patch.object(drawer, 'GLOBAL_WINDOW', Mock()):
-            api._ask_ai('Domanda in italiano')
-        messages = api.client.chat.completions.create.call_args.kwargs['messages']
-        self.assertIn('Always answer in English.', messages[0]['content'])
-        self.assertEqual(messages[1]['content'], 'Earlier question')
-
-    def test_lens_interpretation_uses_chosen_language(self):
-        api = self.api()
-        api.set_language('en')
-        api._lens_answers['job'] = dict(question='Question', result=None)
-        with patch.object(drawer, 'answer_from_lens', return_value=dict(ok=True, text='Answer', interpreted=True)) as answer:
-            api._interpret_lens('job', dict(ok=True, text='Results'))
-        self.assertIn('Always answer in English.', answer.call_args.kwargs['system_prompt'])
 
     def test_failed_save_keeps_current_language(self):
         api = self.api()
@@ -89,7 +73,7 @@ class LanguageTests(unittest.TestCase):
         path = Path(self.directory.name) / 'capture.png'
         path.write_bytes(b'capture')
         webview = MagicMock()
-        with patch.dict(sys.modules, {'webview': webview}), patch.object(drawer, 'GROQ_API_KEY', None), \
+        with patch.dict(sys.modules, {'webview': webview}), patch.object(drawer, 'GLOBAL_WINDOW', None), \
              patch.object(drawer, 'GLOBAL_WINDOW', None):
             drawer.run_drawer_app(str(path), 0, 0, 560, 680)
         html = webview.create_window.call_args.kwargs['html']

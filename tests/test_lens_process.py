@@ -110,7 +110,9 @@ class LensWorkerLifecycleTests(unittest.TestCase):
              patch.object(sys, 'stdin', io.StringIO(commands)), \
              patch('lens_session.LensSession', side_effect=build), \
              patch('logging.basicConfig'), contextlib.redirect_stdout(output):
-            self.assertEqual(lens_worker.main(), 0)
+            self.assertEqual(lens_worker.main(560, 680), 0)
+        self.assertEqual(webview.create_window.call_args.kwargs['width'], 560)
+        self.assertEqual(webview.create_window.call_args.kwargs['height'], 680)
         messages = [json.loads(line) for line in output.getvalue().splitlines()]
         self.assertEqual(messages[0]['type'], 'ready')
         self.assertEqual(next(m for m in messages if m['type'] == 'result')['result']['text'], 'Result')

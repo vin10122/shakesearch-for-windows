@@ -6,33 +6,11 @@ import threading
 import logging
 import subprocess
 import tempfile
-import time
 from pathlib import Path
-from dotenv import load_dotenv
 from image_clipboard import copy_image_to_clipboard
 from lens_process import LensProcessClient
-from lens_answer import answer_from_lens
 from window_shape import install_drawer_shape
-from localization import get_language, set_language as save_language, catalog, tr, response_language
-
-load_dotenv()
-
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
-CHAT_MAX_TOKENS = 400
-CHAT_SYSTEM_PROMPT = (
-    "You are the intelligent visual assistant of ShakeSearch. "
-    "Answer accurately in the user's language and lead with the key answer. "
-    f"Your entire response must fit within {CHAT_MAX_TOKENS} output tokens. "
-    "Aim for 200–280 tokens or fewer; simple questions need only a few sentences. "
-    "Plan the scope before answering so you can finish comfortably within the budget. "
-    "Prioritize the essential answer and omit optional explanations, repeated context "
-    "and long introductions. Use short paragraphs or a few bullets. "
-    "If code is needed, give only a short, complete example and close every code block. "
-    "Reserve enough room to finish your final sentence. Never start a list or example "
-    "you cannot complete within the remaining budget."
-)
-
+from localization import get_language, set_language as save_language, catalog, tr
 
 HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="it">
@@ -369,13 +347,12 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div class="lens-search">
       <label for="lensQuestion" data-i18n="Cerca con Google Lens">Cerca con Google Lens</label>
       <textarea id="lensQuestion" maxlength="500" placeholder="Domanda facoltativa, per esempio: dove posso comprarlo?" data-i18n-placeholder="Domanda facoltativa, per esempio: dove posso comprarlo?"></textarea>
-      <span data-i18n="Si apre la finestra Lens: completa lì eventuali richieste di consenso. L’AI interpreta i risultati nella chat. Il ritaglio va a Google e i risultati all’API configurata.">Si apre la finestra Lens: completa lì eventuali richieste di consenso. L’AI interpreta i risultati nella chat. Il ritaglio va a Google e i risultati all’API configurata.</span>
-      <label><input type="checkbox" id="lensChatMode"> <span data-i18n="Usa Lens per le prossime domande">Usa Lens per le prossime domande</span></label>
+      <span data-i18n="Si apre la finestra Lens: completa lì eventuali richieste di consenso. Il ritaglio viene inviato a Google.">Si apre la finestra Lens: completa lì eventuali richieste di consenso. Il ritaglio viene inviato a Google.</span>
       <button class="btn-action" id="sendToLensButton" onclick="sendToLens()" data-i18n="Invia a Lens">Invia a Lens</button>
       <span id="lensStatus" role="status" aria-live="polite"></span>
     </div>
 
-    <div class="status-text" id="statusText" data-i18n="⏳ Analisi della selezione…">⏳ Analisi della selezione…</div>
+    <div class="status-text" id="statusText" data-i18n="Cerca questa immagine con Lens">Cerca questa immagine con Lens</div>
     <div class="chips-container" id="chipsContainer"></div>
     <div class="chat-box" id="chatBox"></div>
   </div>
@@ -463,7 +440,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       if (!result.ok) {
         answer.textContent = t(result.error);
       } else {
-        answer.textContent = (result.interpreted ? t('Risposta AI basata sui risultati Lens') + '\n\n' : 'Google Lens\n\n') + result.text;
+        answer.textContent = 'Google Lens\n\n' + result.text;
         if (result.warning) answer.textContent += '\n\n' + t(result.warning);
         for (const link of result.links || []) {
           try {
@@ -491,7 +468,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   async function sendToLens() {
     const button = document.getElementById('sendToLensButton');
     button.disabled = true;
-    document.getElementById('lensChatMode').checked = true;
     try {
       await askLens(document.getElementById('lensQuestion').value);
     } finally {
@@ -549,16 +525,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     const text = input.value.trim();
     if (!text) return;
     input.value = '';
-    if (document.getElementById('lensChatMode').checked) {
-      await askLens(text);
-    } else {
-      const id = createChatTurn(text, 'ai');
-      try {
-        await pywebview.api.send_chat(text, id);
-      } catch (error) {
-        updateAiResponse(t('Impossibile inviare la domanda. Riprova.'), id);
-      }
-    }
+    await askLens(text);
   }
 
   function updateAiResponse(text, id) {
@@ -608,21 +575,10 @@ class DrawerApi:
             self.image_bytes = None
         self.initial_geom = initial_geom
         self._fullscreen = False
-        self.conversation_history = []
-        self.is_first_prompt = True
-        self.client = None
         self._lens_lock = threading.Lock()
         self._lens_client = None
         self._lens_jobs = {}
-        self._lens_answers = {}
-        self._lens_history = []
         self._lens_closed = False
-        if GROQ_API_KEY:
-            try:
-                from groq import Groq
-                self.client = Groq(api_key=GROQ_API_KEY)
-            except Exception as e:
-                print(f"Errore Groq: {e}")
 
     def language_settings(self):
         return dict(ok=True, language=self.language, translations=catalog(self.language))
@@ -664,9 +620,6 @@ class DrawerApi:
             logging.getLogger('shakesearch').exception('Unable to copy image')
             return dict(ok=False, error='Impossibile copiare l’immagine. Riprova; dettagli in shakesearch.log.')
 
-    def send_chat(self, text, reply_id=None):
-        threading.Thread(target=self._ask_ai, args=(text, reply_id), daemon=True).start()
-
     def send_to_lens(self, question=''):
         if not self.image_bytes:
             return dict(ok=False, error='Immagine non disponibile. Esegui una nuova cattura.')
@@ -677,16 +630,15 @@ class DrawerApi:
                 if self._lens_client is None or self._lens_client.failed:
                     if self._lens_client is not None:
                         self._lens_client.close()
-                    self._lens_client = LensProcessClient(self.image_bytes)
+                    size = (int(GLOBAL_WINDOW.width), int(GLOBAL_WINDOW.height)) if GLOBAL_WINDOW else self.initial_geom[2:]
+                    self._lens_client = LensProcessClient(self.image_bytes, window_size=size)
                 token = self._lens_client.submit(question)
                 self._lens_jobs[token] = self._lens_client
-                self._lens_answers[token] = dict(question=question, started=time.monotonic(), processing=False, result=None)
                 for old in list(self._lens_jobs):
                     if len(self._lens_jobs) <= 64:
                         break
                     if self._lens_jobs[old].poll(old)['done']:
                         del self._lens_jobs[old]
-                        self._lens_answers.pop(old, None)
             return dict(ok=True, job_id=token)
         except Exception as error:
             logging.getLogger('shakesearch').exception('Unable to queue Lens request')
@@ -698,49 +650,12 @@ class DrawerApi:
         if client is None:
             return dict(done=True, result=dict(ok=False, error='Richiesta Lens annullata o sconosciuta.'))
         state = client.poll(token)
-        if not state['done'] or not state['result'].get('ok'):
-            return state
-        with self._lens_lock:
-            job = self._lens_answers.get(token)
-            if job is None:
-                return dict(done=True, result=dict(ok=False, error='Richiesta Lens annullata.'))
-            if job['result'] is not None:
-                return dict(done=True, status='Risposta Lens pronta.', result=job['result'])
-            if not job['processing']:
-                job['processing'] = True
-                job['started'] = time.monotonic()
-                threading.Thread(target=self._interpret_lens, args=(token, state['result']), daemon=True).start()
-            elif time.monotonic() - job['started'] > 35:
-                job['result'] = dict(state['result'], interpreted=False,
-                                     warning='L’API non ha risposto in tempo. Mostro il testo originale di Lens.')
-                return dict(done=True, status='Risultati originali Lens.', result=job['result'])
-        return dict(done=False, status='Risultati Lens ricevuti. L’AI sta preparando la risposta…', result=None)
-
-    def _interpret_lens(self, token, result):
-        with self._lens_lock:
-            job = self._lens_answers.get(token)
-            if job is None:
-                return
-            question = job['question']
-            history = list(self._lens_history)
-        answer = answer_from_lens(self.client, question, result, model=GROQ_MODEL,
-                                  system_prompt=CHAT_SYSTEM_PROMPT + ' ' + response_language(self.language), history=history)
-        with self._lens_lock:
-            job = self._lens_answers.get(token)
-            if job is not None and job['result'] is None:
-                job['result'] = answer
-                if answer.get('interpreted'):
-                    self._lens_history.extend([dict(role='user', content=question),
-                                               dict(role='assistant', content=answer['text'])])
-                    self._lens_history = self._lens_history[-8:]
+        return state
 
     def cancel_lens(self):
         with self._lens_lock:
             client = self._lens_client
             self._lens_client = None
-            for job in self._lens_answers.values():
-                if job['result'] is None:
-                    job['result'] = dict(ok=False, error='Richiesta Lens annullata.')
         if client is not None:
             client.close()
         return dict(ok=True)
@@ -753,7 +668,6 @@ class DrawerApi:
                 clients.add(self._lens_client)
             self._lens_client = None
             self._lens_jobs.clear()
-            self._lens_answers.clear()
         for client in clients:
             client.close()
 
@@ -767,7 +681,8 @@ class DrawerApi:
             if executable.name.lower() == 'pythonw.exe' and executable.with_name('python.exe').is_file():
                 executable = executable.with_name('python.exe')
             with open(log_path, 'a', encoding='utf-8') as log:
-                process = subprocess.Popen([str(executable), script, '--stdin'],
+                size = (int(GLOBAL_WINDOW.width), int(GLOBAL_WINDOW.height)) if GLOBAL_WINDOW else self.initial_geom[2:]
+                process = subprocess.Popen([str(executable), script, '--stdin', str(size[0]), str(size[1])],
                                            stdin=subprocess.PIPE, stdout=log, stderr=log,
                                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             # Pass the immutable capture, never a path overwritten by later captures.
@@ -777,54 +692,6 @@ class DrawerApi:
         except Exception:
             logging.getLogger('shakesearch').exception('Unable to open image text viewer')
             return dict(ok=False, error='Impossibile aprire l’immagine. Controlla shakesearch.log.')
-
-    def _ask_ai(self, text, reply_id=None):
-        global GLOBAL_WINDOW
-        if not GLOBAL_WINDOW:
-            return
-        if not self.client:
-            GLOBAL_WINDOW.evaluate_js('updateAiResponse(' + json.dumps(tr('Configura GROQ_API_KEY per usare le spiegazioni AI.', self.language)) + ', ' + json.dumps(reply_id) + ')')
-            return
-
-        content_payload = [{"type": "text", "text": text}]
-
-        if self.is_first_prompt and self.image_bytes:
-            b64 = base64.b64encode(self.image_bytes).decode()
-            content_payload.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{b64}"}
-            })
-            self.is_first_prompt = False
-
-        # Costruisce la lista messaggi mantenendo il contesto precedente
-        messages = [
-            {"role": "system", "content": CHAT_SYSTEM_PROMPT + ' ' + response_language(self.language)}
-        ]
-
-        # Inserisce la cronologia precedente
-        for turn in self.conversation_history:
-            messages.append({"role": turn["role"], "content": turn["text"]})
-
-        messages.append({"role": "user", "content": content_payload})
-
-        try:
-            completion = self.client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=messages,
-                max_tokens=CHAT_MAX_TOKENS,
-                temperature=0.5,
-            )
-            answer = completion.choices[0].message.content.strip()
-
-            # Salva cronologia per le domande successive
-            self.conversation_history.append({"role": "user", "text": text})
-            self.conversation_history.append({"role": "assistant", "text": answer})
-
-            ans_clean = json.dumps(answer)
-            GLOBAL_WINDOW.evaluate_js(f"updateAiResponse({ans_clean}, {json.dumps(reply_id)})")
-        except Exception as e:
-            GLOBAL_WINDOW.evaluate_js(f"updateAiResponse({json.dumps(tr('Errore: ', self.language) + str(e))}, {json.dumps(reply_id)})")
-
 
 def run_drawer_app(image_path, x, y, width, height):
     global GLOBAL_WINDOW
@@ -836,40 +703,6 @@ def run_drawer_app(image_path, x, y, width, height):
                 b64 = base64.b64encode(f.read()).decode()
             uri = f"data:image/png;base64,{b64}"
             GLOBAL_WINDOW.evaluate_js(f"setPreview('{uri}')")
-
-        if api and api.client and os.path.exists(image_path):
-            def fetch_sugg():
-                try:
-                    with open(image_path, "rb") as f:
-                        b64 = base64.b64encode(f.read()).decode()
-                    prompt = (
-                        "You are ShakeSearch visual assistant. "
-                        "Look at the selected element. "
-                        "Provide: 1) Name or identification in one line. "
-                        "2) Up to 2 quick suggestions. "
-                        "Answer directly without introductory text."
-                        + ' ' + response_language(api.language)
-                    )
-                    comp = api.client.chat.completions.create(
-                        model=GROQ_MODEL,
-                        messages=[
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": prompt},
-                                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
-                                ],
-                            }
-                        ],
-                        max_tokens=200,
-                        temperature=0.4,
-                    )
-                    lines = [l.strip("-• * ") for l in comp.choices[0].message.content.strip().split("\n") if l.strip()][:3]
-                    GLOBAL_WINDOW.evaluate_js(f"setSuggestions({json.dumps(lines)})")
-                except Exception as e:
-                    GLOBAL_WINDOW.evaluate_js('setStatus(' + json.dumps(tr('Nota: ', api.language) + str(e)) + ')')
-
-            threading.Thread(target=fetch_sugg, daemon=True).start()
 
     api = DrawerApi(image_path, (x, y, width, height))
     GLOBAL_WINDOW = webview.create_window(

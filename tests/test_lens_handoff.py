@@ -99,7 +99,7 @@ class DrawerLensTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.path = Path(directory.name) / 'capture.png'
         self.path.write_bytes(image_bytes())
-        with patch.object(drawer, 'GROQ_API_KEY', None):
+        with patch.object(drawer, 'GLOBAL_WINDOW', None):
             self.api = drawer.DrawerApi(str(self.path), (0, 0, 560, 680))
 
     def test_sends_immutable_capture_and_question_without_waiting_for_lens(self):
@@ -119,7 +119,7 @@ class DrawerLensTests(unittest.TestCase):
         factory.assert_not_called()
 
     def test_followups_reuse_worker_without_reentering_main_webview(self):
-        window = Mock(on_top=True)
+        window = Mock(on_top=True, width=560, height=680)
         with patch.object(drawer, 'GLOBAL_WINDOW', window), patch.object(drawer, 'LensProcessClient') as factory:
             factory.return_value.failed = False
             factory.return_value.submit.side_effect = ['one', 'two']
@@ -144,7 +144,7 @@ class DrawerLensTests(unittest.TestCase):
         self.api.client.chat.completions.create.assert_not_called()
 
     def test_closing_drawer_stops_owned_worker(self):
-        window = Mock()
+        window = Mock(width=560, height=680)
         client = Mock()
         self.api._lens_client = client
         with patch.object(drawer, 'GLOBAL_WINDOW', window):

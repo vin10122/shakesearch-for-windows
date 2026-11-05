@@ -9,14 +9,12 @@ import sys
 import tempfile
 import time
 
-from dotenv import load_dotenv
 from PySide6.QtCore import QObject, Signal, Slot, Qt, QTimer
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from overlay import AnimatedScreenOverlay
 
-load_dotenv()
 SHAKE_DISTANCE_THRESHOLD = 300
 SHAKE_TIME_WINDOW = 0.55
 SHAKE_MIN_REVERSALS = 4

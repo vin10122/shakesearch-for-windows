@@ -15,7 +15,7 @@ class WebViewProfileTests(unittest.TestCase):
             image.write_bytes(b'capture')
             with patch.dict(os.environ, {'LOCALAPPDATA': directory}), \
                  patch.dict(sys.modules, {'webview': webview}), \
-                 patch.object(drawer, 'GROQ_API_KEY', None), \
+                 patch.object(drawer, 'GLOBAL_WINDOW', None), \
                  patch.object(drawer, 'GLOBAL_WINDOW', None):
                 drawer.run_drawer_app(str(image), 0, 0, 560, 680)
             profile = Path(directory) / 'ShakeSearch' / 'WebViewProfile'

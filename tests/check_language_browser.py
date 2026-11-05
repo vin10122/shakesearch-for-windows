@@ -23,7 +23,6 @@ with sync_playwright() as runner:
       }};
       applyLanguage({language: 'it', translations: catalogs.it});
       document.getElementById('lensQuestion').value = 'Keep this question';
-      document.getElementById('lensChatMode').checked = true;
       updateAiResponse('Unused', 'missing');
       createChatTurn('User text: Copia immagine', 'ai');
     }''', dict(it=catalog('it'), en=catalog('en')))
@@ -33,7 +32,6 @@ with sync_playwright() as runner:
     assert page.locator('#sendToLensButton').inner_text() == 'Send to Lens'
     assert page.locator('#queryInput').get_attribute('placeholder') == 'Ask anything or circle...'
     assert page.locator('#lensQuestion').input_value() == 'Keep this question'
-    assert page.locator('#lensChatMode').is_checked()
     assert page.locator('.chat-msg-user').inner_text() == 'User text: Copia immagine'
     page.evaluate("async () => { toggleFs(); await askLens('Question'); }")
     assert page.locator('#fsActionLabel').inner_text() == '🗗 Window'

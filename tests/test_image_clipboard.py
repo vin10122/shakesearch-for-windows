@@ -81,7 +81,7 @@ class DrawerCopyTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.path = Path(self.directory.name) / 'capture.png'
         self.path.write_bytes(png_bytes())
-        with patch.object(drawer, 'GROQ_API_KEY', None):
+        with patch.object(drawer, 'GLOBAL_WINDOW', None):
             self.api = drawer.DrawerApi(str(self.path), (0, 0, 560, 680))
 
     def test_copies_original_capture_after_source_file_is_removed(self):

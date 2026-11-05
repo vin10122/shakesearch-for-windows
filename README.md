@@ -9,7 +9,7 @@ ShakeSearch is an experimental open-source project for Windows that brings an AI
 ShakeSearch lets you select any area of your screen by shaking your mouse or pressing a hotkey. Once you circle an area, a drawer window opens with:
 
 - A preview of the captured image
-- AI-generated suggestions about what is in the image
+- Google Lens results about the image
 - A text input to ask custom questions about the selection
 - An option to copy the captured image
 - A text viewer to extract, edit and copy text from the capture
@@ -19,9 +19,9 @@ ShakeSearch lets you select any area of your screen by shaking your mouse or pre
 
 - **Quick capture:** shake the mouse or press **Alt + F7**, then circle an area on any connected monitor. A moving ultramarine glow marks the screen edges during selection.
 - **Smarter selection:** nearby rectangles can snap to their edges. Hold **Shift** to skip snapping, or adjust the selection by dragging its corners and edges before pressing **Enter**.
-- **AI chat:** get suggestions and ask questions about the capture using the configured Groq vision model. The drawer can be expanded with **F11**.
+- **Lens chat:** view results and ask questions about the capture using Google Lens. The drawer can be expanded with **F11**.
 - **Copy image and text:** copy the capture to the clipboard, or open it in a separate window to recognize, edit and copy its text.
-- **Google Lens (experimental):** send the image and an optional question to Lens. Complete any Google consent in the Lens window; available results and source links appear in the chat, with an AI explanation when Groq is available. Follow-up questions can use the same image session.
+- **Google Lens (experimental):** send the image and an optional question to Lens. Complete any Google consent in the Lens window; available results and source links appear in the chat, with the original Lens results. Follow-up questions can use the same image session.
 - **Italian and English:** switch languages from the chat. The choice is saved for future captures and windows.
 
 The Lens integration relies on Google web pages, which can change or require verification. Its live flow still needs verification on Windows; see the Lens section below for details.
@@ -30,9 +30,9 @@ Circle to Search is Google's visual search feature for supported Android phones.
 
 Google explains the original Android feature in its [introduction to Circle to Search](https://blog.google/products/search/google-circle-to-search-android/). ShakeSearch takes inspiration from its screen selection gesture and is developed independently of Google.
 
-ShakeSearch currently provides AI-generated explanations and answers about the selected content. The experimental **Invia a Lens** option sends the selection to Google Lens and reads available results into the ShakeSearch chat through an internal web session.
+ShakeSearch currently provides Google Lens results and answers about the selected content. The experimental **Invia a Lens** option sends the selection to Google Lens and reads available results into the ShakeSearch chat through an internal web session.
 
-It runs locally on Windows and uses Groq's API (Qwen 3.8 27B vision model) to understand what is on your screen.
+It runs locally on Windows and sends selected images and questions to Google Lens. No API key is required.
 
 **This is experimental software.** It is provided as-is without warranty. Use it at your own risk. The project is not affiliated with, endorsed by, or connected to Google LLC or any of its products.
 
@@ -45,7 +45,6 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
 - Windows 10 or Windows 11
 - Python 3.10 or newer (64-bit)
 - Microsoft Edge WebView2 Runtime (required by the chat window on Windows)
-- A free Groq API key from https://console.groq.com/
 
 ## Installation
 
@@ -62,14 +61,7 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
    python -m pip install -r requirements.txt
    ```
 
-3. Create a file named `.env` in the project folder with your Groq API key:
-
-   ```env
-   GROQ_API_KEY=your_api_key_here
-   GROQ_MODEL=qwen/qwen3.8-27b
-   ```
-
-4. Run the application:
+3. Run the application:
 
    ```powershell
    python shakesearch.py
@@ -84,15 +76,15 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
 - Hold Shift when releasing the mouse to keep a free selection.
 - Before confirming, drag the ultramarine-blue handles at the corners or along any edge to refine the rectangle.
 - Press Enter to confirm the selection, or Esc to cancel and try again.
-- A drawer window opens showing the captured image and AI suggestions.
+- A drawer window opens showing the captured image and Lens search controls.
 - Type a question in the input box at the bottom to ask about the image.
 - Click **Copia immagine** to copy the original capture to the Windows clipboard. A message confirms the copy or explains an error.
 - Click **Apri immagine per copiare testo** to open the image alongside its recognized text.
-- To query Lens in the chat, add an optional question under **Cerca con Google Lens** and click **Invia a Lens**. Leave **Usa Lens per le prossime domande** checked to send follow-up questions about the same image.
+- To query Lens in the chat, add an optional question under **Cerca con Google Lens** and click **Invia a Lens**. Follow-up questions in the chat use Lens and the same image session.
 
 Choose **Italiano** or **English** from the selector at the top of the chat.
 The chat controls change immediately, and new capture overlays and text-viewer
-windows use the saved language. AI answers, suggestions and the language requested
+windows use the saved language. The language requested
 from Google Lens follow this choice. Existing messages and text transcribed from
 images keep their original content. Italian is the default; the preference is
 saved locally in `%LOCALAPPDATA%\ShakeSearch\settings.json` on Windows.
@@ -104,7 +96,7 @@ saved locally in `%LOCALAPPDATA%\ShakeSearch\settings.json` on Windows.
 | shakesearch.py | Main application: input listeners, Qt screen capture, session management |
 | overlay.py | Qt selection overlay and ultramarine-blue plasma animation |
 | rectangle_snap.py | Local rectangle detection and selection alignment |
-| drawer.py | Drawer window: image preview, AI chat |
+| drawer.py | Drawer window: image preview, Lens chat |
 | localization.py | Italian/English interface catalog and saved language preference |
 | window_shape.py | Native rounded drawer clipping on Windows to remove the outer rectangular backing |
 | ocr_viewer.py | Image viewer with editable text recognition and clipboard support |
@@ -114,10 +106,8 @@ saved locally in `%LOCALAPPDATA%\ShakeSearch\settings.json` on Windows.
 | lens_session.py | Isolated internal Lens session and reading of visible results |
 | lens_process.py | Nonblocking Lens request queue and child-process management |
 | lens_worker.py | Dedicated Lens WebView process and persistent consent profile |
-| lens_answer.py | API interpretation of real Lens results with source links |
 | browser_window.py | Standalone browser-launch helper |
 | requirements.txt | Python dependencies |
-| .env | Your API keys (not tracked by git) |
 | .gitignore | Files excluded from version control |
 
 ## Capture animation
@@ -162,8 +152,7 @@ edges may require a free selection. Install updated requirements after upgrading
 
 In the chat drawer, choose **Apri immagine per copiare testo**. A separate window
 shows the captured image with zoom controls and extracts its text using the
-configured Groq vision model. This requires your existing `GROQ_API_KEY` and an
-Internet connection; recognition is performed by Groq, not locally.
+Google Lens. This requires an Internet connection and uses Google Lens, not local recognition. The text viewer uses its own Lens profile, separate from the chat.
 
 The extracted text is selectable and editable. Use **Copia testo** to copy the
 selected portion, or all text when nothing is selected. **Ctrl+C** copies a text
@@ -176,29 +165,9 @@ Enter an optional question in **Cerca con Google Lens** and click **Invia a Lens
 This opens the internal Google Lens window immediately. Complete any consent,
 sign-in or verification request there. ShakeSearch automatically uploads the
 captured image from that same browser session, reads the resulting text and
-source links, and sends them to the configured Groq API for interpretation.
-The Lens window stays visible, including after results arrive, so you can
-interact with Google directly. The chat and original source links remain available.
-Your optional question is included in the image upload. If Google's consent
-redirect removes it, ShakeSearch reapplies it as soon as the image-search session
-exists, without waiting for image-only results to finish loading.
+source links into the chat.
+The Lens window opens at the current chat window size and stays visible so you can interact with Google directly. All chat questions and follow-ups use the same Lens image session. Results and source links are displayed directly, without an external AI interpretation service or API key.
 
-Lens runs in a separate process with one internal window created at startup.
-The chat submits requests and checks their progress without waiting inside its
-interface callbacks, so a stalled Google page cannot freeze the chat's interface.
-Requests stop after five minutes without a response. Closing the chat cancels
-pending requests and stops its Lens process, including an unresponsive reader.
-
-With **Usa Lens per le prossime domande** checked, messages in the main input use
-the same image-search session. Uncheck it to return to Groq's AI explanations.
-The chat labels replies interpreted by AI using Lens results. The API receives
-the question, up to 6,000 characters of Lens text, up to eight source links and
-recent Lens conversation context. It is instructed to treat page content as
-untrusted data and explain uncertainty. If the API is unavailable or no
-`GROQ_API_KEY` is configured, the original Lens results appear with an explanation.
-The API call has a 25-second timeout and the chat stops waiting for interpretation
-after 35 seconds. If Lens returns no results, the chat reports the failure
-instead of substituting a generated answer.
 Menus, headers, footers and generic page links are excluded. The reader accepts
 structured result cards, visual matches and recognized answer blocks, rather than
 the full page text. If Google opens its homepage instead of search results, the
@@ -272,4 +241,4 @@ MIT License
 
 ## Disclaimer
 
-This project is experimental. It uses third-party AI models through the Groq API. Screen captures are processed by an external service. Do not use this tool to capture sensitive or private information unless you understand and accept the privacy implications of sending images to an AI API.
+This project is experimental. It uses Google Lens. Screen captures are processed by an external service. Do not use this tool to capture sensitive or private information unless you understand and accept the privacy implications of sending images to Google.
