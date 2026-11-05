@@ -29,6 +29,8 @@ jobs:
             $tail = Get-Content build-output.txt -Tail 100 | Out-String
             Write-Output $tail
             if ($result -ne 0) {
+              $diagnostic = $tail.Substring([Math]::Max(0, $tail.Length - 8000)).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+              Write-Output "::error title=Windows build diagnostic::$diagnostic"
               '### Windows build failure' | Add-Content $env:GITHUB_STEP_SUMMARY
               '```text' | Add-Content $env:GITHUB_STEP_SUMMARY
               $tail | Add-Content $env:GITHUB_STEP_SUMMARY
