@@ -2,6 +2,7 @@
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
     QFormLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QVBoxLayout, QWidget)
 from localization import get_language
+from app_version import VERSION
 from app_settings import preferences, save_preferences
 
 
@@ -56,7 +57,7 @@ class ControlPanel(QMainWindow):
     def __init__(self, controller):
         super().__init__()
         self.controller = controller
-        self.setWindowTitle('ShakeSearch')
+        self.setWindowTitle('ShakeSearch ' + VERSION)
         self.resize(430, 260)
         container = QWidget()
         self.setCentralWidget(container)

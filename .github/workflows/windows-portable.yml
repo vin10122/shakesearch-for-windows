@@ -39,7 +39,9 @@ jobs:
 
           Terminale e finestra di stato visibili, configurazione al primo avvio, sensibilità del mouse regolabile e modalità di animazione leggera. Alt+F7 è stato rimosso. La finestra Lens si apre con le dimensioni della chat.
 
-          Seleziona le lettere direttamente sull’immagine trascinando il mouse, poi premi Ctrl+C o Copia testo. Il riquadro di testo separato è facoltativo. Copia testo dall’immagine con OCR locale di Windows: nessuna finestra Lens e nessun invio a Google per questa funzione. Richiede una lingua OCR installata. README aggiornato. Icona del logo inclusa nell’eseguibile e nelle finestre dell’app.
+          Copia il testo direttamente dopo lo shake: l’overlay riconosce il testo localmente, permette di trascinare sulle lettere e copiarle con Ctrl+C o Copia testo. Non occorre aprire chat, lettore o Lens. Per cerchiare un’immagine partendo dal testo, disattiva Seleziona testo.
+
+          La build verifica anche l’EXE compilato con OCR Windows reale, selezione nell’overlay e copia negli appunti.
 
           Build sperimentale non firmata.
           '@

@@ -5,6 +5,9 @@ import sys
 
 def main():
     multiprocessing.freeze_support()
+    if sys.argv[1:] == ['--check-screen-text']:
+        from runtime_checks import check_screen_text
+        return check_screen_text()
     if len(sys.argv) >= 3 and sys.argv[1] == '--role':
         role = sys.argv[2]
         sys.argv = [sys.argv[0]] + sys.argv[3:]

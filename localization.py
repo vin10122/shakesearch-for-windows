@@ -7,6 +7,10 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
 EN = {
+    'Lettura del testo sullo schermo…': 'Reading screen text…',
+    'Seleziona testo': 'Select text',
+    'Trascina sul testo · Ctrl+C per copiare': 'Drag over text · Ctrl+C to copy',
+
     'Seleziona tutto': 'Select all',
     'Mostra testo separato': 'Show separate text',
     'Trascina sulle lettere nell’immagine, poi premi Ctrl+C o Copia testo.': 'Drag over the letters in the image, then press Ctrl+C or Copy text.',

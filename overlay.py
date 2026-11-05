@@ -1,12 +1,16 @@
 """Qt screen selection and blue perimeter-to-center-to-perimeter animation."""
 import math
+import sys
 from localization import tr, get_language
 from app_settings import preferences
+from app_version import VERSION
 
 from PIL import Image
-from PySide6.QtCore import Qt, QRectF, QPointF, QElapsedTimer, QTimer, QThreadPool, Slot
+from PySide6.QtCore import Qt, QRectF, QPointF, QElapsedTimer, QTimer, QThreadPool, Slot, QBuffer, QIODevice
 from PySide6.QtGui import QColor, QConicalGradient, QImage, QPainter, QPainterPath, QPen, QFont, QRegion
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QWidget, QPushButton, QLabel, QHBoxLayout, QApplication
+from image_text_selection import SelectableImage
+from screen_ocr import ScreenOcrTask
 from rectangle_snap import RectangleSnapTask
 
 ACCENT = QColor('#3447b8')
@@ -85,6 +89,90 @@ class AnimatedScreenOverlay(QWidget):
         self.timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.timer.setInterval(FRAME_INTERVAL_MS)
         self.timer.timeout.connect(self.advance_animation)
+        self.setup_text_selection()
+
+    def setup_text_selection(self):
+        self._ocr_closed = False
+        self._text_dragging = False
+        self._text_task = None
+        self.text_mode = True
+        self.text_layer = SelectableImage()
+        self.text_layer.setParent(self)
+        self.text_layer.setGeometry(self.rect())
+        self.text_layer.setStyleSheet('background: transparent;')
+        self.text_layer.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.text_layer.selectionChanged.connect(self.text_selection_changed)
+        self.text_layer.show()
+        self.text_toolbar = QWidget(self)
+        self.text_toolbar.setStyleSheet('QWidget {background:#22262d;color:#eef2f8;} QPushButton {padding:8px;}')
+        layout = QHBoxLayout(self.text_toolbar)
+        layout.addWidget(QLabel('ShakeSearch ' + VERSION))
+        self.text_status = QLabel(tr('Lettura del testo sullo schermo…', self.language))
+        layout.addWidget(self.text_status)
+        self.text_toggle = QPushButton(tr('Seleziona testo', self.language))
+        self.text_toggle.setCheckable(True)
+        self.text_toggle.setChecked(True)
+        self.text_toggle.toggled.connect(self.toggle_text_mode)
+        layout.addWidget(self.text_toggle)
+        self.select_all_text = QPushButton(tr('Seleziona tutto', self.language))
+        self.select_all_text.setEnabled(False)
+        self.select_all_text.clicked.connect(self.text_layer.select_all)
+        layout.addWidget(self.select_all_text)
+        self.copy_screen_text = QPushButton(tr('Copia testo', self.language))
+        self.copy_screen_text.setEnabled(False)
+        self.copy_screen_text.clicked.connect(self.copy_text_selection)
+        layout.addWidget(self.copy_screen_text)
+        self.text_toolbar.adjustSize()
+        self.text_toolbar.move(max(8, (self.width() - self.text_toolbar.width()) // 2), 60)
+        self.text_toolbar.show()
+        # Read the captured pixels, never a second screenshot containing our UI.
+        if sys.platform == 'win32':
+            QTimer.singleShot(0, self.start_text_recognition)
+
+    def start_text_recognition(self):
+        if self._ocr_closed:
+            return
+        buffer = QBuffer()
+        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+        self.background.toImage().save(buffer, 'PNG')
+        self._text_task = ScreenOcrTask(bytes(buffer.data()))
+        self._text_task.signals.finished.connect(self.apply_screen_text)
+        self._text_task.start()
+
+    @Slot(object)
+    def apply_screen_text(self, result):
+        if self._ocr_closed:
+            return
+        if 'error' in result:
+            self.text_status.setText(tr('Lettura non riuscita: ', self.language) + result['error'])
+            self.text_status.setWordWrap(True)
+            self.text_status.setMaximumWidth(max(160, self.width() // 3))
+        else:
+            self.text_layer.set_ocr(result['text'], result.get('words', []),
+                                   (self.background.width(), self.background.height()))
+            ready = bool(self.text_layer.words)
+            self.select_all_text.setEnabled(ready)
+            self.text_status.setText(tr('Trascina sul testo · Ctrl+C per copiare', self.language) if ready
+                                     else tr('Nessun testo riconosciuto. Prova con un’immagine più nitida.', self.language))
+        self.text_toolbar.adjustSize()
+
+    def toggle_text_mode(self, enabled):
+        self.text_mode = enabled
+        self.text_layer.clear_selection()
+        self._text_dragging = False
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def text_selection_changed(self, text):
+        self.copy_screen_text.setEnabled(bool(text))
+        # The text layer is transparent; repaint its highlights without changing
+        # screenshot pixels or sending anything to the chat.
+        self.text_layer.update()
+
+    def copy_text_selection(self):
+        text = self.text_layer.selected_text()
+        if text:
+            QApplication.clipboard().setText(text)
+            self.text_status.setText(tr('Testo copiato negli appunti.', self.language))
 
     def start_animation(self):
         self.clock.start()
@@ -241,6 +329,15 @@ class AnimatedScreenOverlay(QWidget):
         if event.button() != Qt.MouseButton.LeftButton:
             return
         self.setFocus()
+        if self.text_mode and self.text_layer.hit_position(event.position()) is not None:
+            self.text_layer.mousePressEvent(event)
+            self._text_dragging = True
+            self.pending_bbox = None
+            self.points = []
+            self.reset_snap()
+            self.update()
+            return
+        self.text_layer.clear_selection()
         edge = self.resize_edge_at(event.position())
         self.reset_snap()
         self._resize_edge = edge
@@ -256,6 +353,12 @@ class AnimatedScreenOverlay(QWidget):
         self.update()
 
     def mouseMoveEvent(self, event):
+        if self._text_dragging:
+            self.text_layer.mouseMoveEvent(event)
+            return
+        if self.text_mode and not self.drawing and self.text_layer.hit_position(event.position()) is not None:
+            self.setCursor(Qt.CursorShape.IBeamCursor)
+            return
         if self._resize_edge is not None:
             self.resize_selection(event.position())
         elif self.drawing:
@@ -266,6 +369,10 @@ class AnimatedScreenOverlay(QWidget):
 
     def mouseReleaseEvent(self, event):
         if event.button() != Qt.MouseButton.LeftButton:
+            return
+        if self._text_dragging:
+            self.text_layer.mouseReleaseEvent(event)
+            self._text_dragging = False
             return
         if self._resize_edge is not None:
             self.resize_selection(event.position())
@@ -328,7 +435,28 @@ class AnimatedScreenOverlay(QWidget):
         return Image.frombytes('RGBA', (crop.width(), crop.height()),
                                bytes(crop.constBits()), 'raw', 'RGBA', crop.bytesPerLine())
 
+    def mouseDoubleClickEvent(self, event):
+        if self.text_mode and self.text_layer.hit_position(event.position()) is not None:
+            self.text_layer.mouseDoubleClickEvent(event)
+            self._text_dragging = False
+            self.drawing = False
+            self.pending_bbox = None
+            self.reset_snap()
+            self.update()
+        else:
+            super().mouseDoubleClickEvent(event)
+
     def keyPressEvent(self, event):
+        from PySide6.QtGui import QKeySequence
+        if event.matches(QKeySequence.StandardKey.Copy):
+            self.copy_text_selection()
+            return
+        if event.matches(QKeySequence.StandardKey.SelectAll) and self.text_mode:
+            self.text_layer.select_all()
+            return
+        if event.key() == Qt.Key.Key_Escape and self.text_layer.selected_text():
+            self.text_layer.clear_selection()
+            return
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             if self._resize_edge is not None:
                 return
@@ -350,6 +478,7 @@ class AnimatedScreenOverlay(QWidget):
             super().keyPressEvent(event)
 
     def closeEvent(self, event):
+        self._ocr_closed = True
         self.reset_snap()
         self.timer.stop()
         super().closeEvent(event)

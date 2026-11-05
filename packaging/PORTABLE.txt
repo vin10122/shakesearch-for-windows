@@ -24,3 +24,7 @@ Install a Windows OCR language pack if text recognition is unavailable.
 Drag over the letters directly on the image, then press Ctrl+C or Copy text.
 Double-click selects a word. Ctrl+A selects all recognized text.
 The separate editable text pane is optional (Show separate text).
+
+After shaking the mouse, wait for screen text recognition, drag over letters
+on the frozen screen and press Ctrl+C or Copy text. No chat or Lens is needed.
+Turn off Select text to draw an image area starting over text instead.

@@ -11,6 +11,8 @@ $env:QT_QPA_PLATFORM = 'offscreen'
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
 & $python -m PyInstaller --noconfirm --clean packaging/ShakeSearch.spec
 if ($LASTEXITCODE -ne 0) { throw 'Packaging failed' }
+& ./dist/ShakeSearch/ShakeSearch.exe --check-screen-text
+if ($LASTEXITCODE -ne 0) { throw 'Packaged screen text selection smoke test failed' }
 Copy-Item packaging/PORTABLE.txt dist/ShakeSearch/README.txt
 Copy-Item LICENSE dist/ShakeSearch/LICENSE.txt
 Compress-Archive -Path dist/ShakeSearch -DestinationPath dist/ShakeSearch-windows-x64.zip -Force

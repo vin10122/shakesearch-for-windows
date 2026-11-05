@@ -67,7 +67,26 @@ The chat drawer shows your capture and search controls. **Copy image / Copia imm
 copies the original image to the Windows clipboard. **F11** toggles the chat's
 fullscreen view; **Esc** closes the chat.
 
-## Copy text without Lens
+## Copy text immediately after shaking the mouse
+
+Shake the mouse (or use Select area). The frozen screen starts **local Windows OCR**
+automatically, without opening chat, Lens, or an image viewer. The overlay shows
+recognition progress and the running app version.
+
+1. Wait for **Drag over text · Ctrl+C to copy**.
+2. Drag directly over the letters on the frozen screen, or double-click a word.
+3. Press **Ctrl+C** or click **Copy text** in the overlay toolbar.
+
+**Select all** selects all recognized text on the current monitor. Selection and
+clipboard copying work independently on each monitor, including mixed-DPI screens.
+To draw an image area starting over text, turn off **Select text**, then draw and
+press Enter as usual. Text selection alone never opens the chat or Lens. Press
+Esc to clear a text selection, then Esc again to exit.
+
+If Windows OCR is unavailable or no text is detected, the overlay shows that result;
+it does not silently open Lens. An installed Windows OCR language is required.
+
+## Copy text from a separate image window
 
 Click **Open image to copy text / Apri immagine per copiare testo** in the drawer.
 The image window automatically recognizes text using **Windows OCR**, locally.
@@ -143,6 +162,10 @@ The script creates `.venv-build`, installs dependencies, runs tests, builds with
 PyInstaller, and creates `dist/ShakeSearch-windows-x64.zip`. Chat, Lens, and the text
 viewer run as isolated roles of the same executable. The local OCR PowerShell helper
 is included in `_internal/scripts` and uses the built-in Windows runtime.
+
+Before producing the ZIP, the build also runs the **compiled EXE** against a known
+text image, checks real Windows OCR word positions, selects a word on the capture
+overlay, and verifies Ctrl+C clipboard output.
 
 The **Windows portable build** GitHub Actions workflow can run manually. Pushing a
 `v*` tag builds and publishes a release with the ZIP after tests pass. Manual runs
