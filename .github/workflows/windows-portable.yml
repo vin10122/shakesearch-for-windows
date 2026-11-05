@@ -4,7 +4,7 @@ on:
   push:
     tags: ['v*']
 permissions:
-  contents: read
+  contents: write
 jobs:
   build:
     runs-on: windows-latest
@@ -22,3 +22,23 @@ jobs:
           name: ShakeSearch-windows-x64
           path: dist/ShakeSearch-windows-x64.zip
           if-no-files-found: error
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $notes = @'
+          Versione portatile per Windows 10/11 a 64 bit.
+
+          Scarica ShakeSearch-windows-x64.zip, estrai tutta la cartella e avvia ShakeSearch.exe. Mantieni la cartella _internal accanto all'eseguibile.
+
+          Python è incluso. È necessario Microsoft Edge WebView2 Runtime. Non serve una chiave API: ricerca e domande usano Google Lens.
+
+          La finestra Lens si apre con le dimensioni della chat. Build sperimentale non firmata.
+          '@
+          $notes | Set-Content -Path release-notes.txt -Encoding utf8
+          gh release create $env:RELEASE_TAG dist/ShakeSearch-windows-x64.zip --verify-tag --title "ShakeSearch $env:RELEASE_TAG — Windows portable" --notes-file release-notes.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
