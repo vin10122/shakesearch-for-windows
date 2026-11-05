@@ -35,7 +35,13 @@ try {
     $bitmap = $converted
     $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
     $text = ($result.Lines | ForEach-Object { $_.Text }) -join "`n"
-    @{text=$text; truncated=$false} | ConvertTo-Json -Compress
+    $words = @($result.Lines | ForEach-Object {
+        $_.Words | ForEach-Object {
+            @{text=$_.Text; x=$_.BoundingRect.X; y=$_.BoundingRect.Y;
+              width=$_.BoundingRect.Width; height=$_.BoundingRect.Height}
+        }
+    })
+    @{text=$text; words=$words; truncated=$false} | ConvertTo-Json -Depth 5 -Compress
 } finally {
     if ($null -ne $bitmap) { $bitmap.Dispose() }
     if ($null -ne $stream) { $stream.Dispose() }

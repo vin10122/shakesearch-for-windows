@@ -39,6 +39,12 @@ class LocalOcrTests(unittest.TestCase):
         with patch.object(sys, 'platform', 'win32'), patch('local_ocr.subprocess.run', side_effect=recognize):
             self.assertEqual(local_ocr.extract_text(png((5200, 1300)))['text'], '')
 
+    def test_word_boxes_map_back_to_original_image_after_scaling(self):
+        payload = dict(text='ABC', words=[dict(text='ABC', x=10, y=20, width=100, height=30)])
+        with patch.object(sys, 'platform', 'win32'), patch('local_ocr.subprocess.run', return_value=Mock(returncode=0, stdout=json.dumps(payload))):
+            result = local_ocr.extract_text(png((5200, 1300)))
+        self.assertEqual(result['words'][0], dict(text='ABC', start=0, end=3, x=20, y=40, width=200, height=60))
+
     def test_missing_language_and_timeout_are_actionable(self):
         with patch.object(sys, 'platform', 'win32'), patch('local_ocr.subprocess.run') as run:
             run.return_value = Mock(returncode=1, stderr='OCR_LANGUAGE_MISSING')
@@ -61,6 +67,12 @@ class LocalOcrTests(unittest.TestCase):
         stream = io.BytesIO()
         image.save(stream, format='PNG')
         with patch('local_ocr.get_language', return_value='en-US'):
-            text = local_ocr.extract_text(stream.getvalue())['text']
+            result = local_ocr.extract_text(stream.getvalue())
+            text = result['text']
+        self.assertGreater(len(result['words']), 0)
+        for word in result['words']:
+            self.assertEqual(text[word['start']:word['end']], word['text'])
+            self.assertGreater(word['width'], 0)
+            self.assertGreater(word['height'], 0)
         self.assertIn('SEARCH', text.upper())
         self.assertIn('123', text)

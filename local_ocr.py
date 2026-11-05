@@ -20,7 +20,9 @@ def extract_text(image_bytes):
         path = Path(directory) / 'capture.png'
         with Image.open(io.BytesIO(image_bytes)) as original:
             image = ImageOps.exif_transpose(original).convert('RGB')
+            source_width, source_height = image.size
             image.thumbnail((2600, 2600), Image.Resampling.LANCZOS)
+            scale_x, scale_y = source_width / image.width, source_height / image.height
             image.save(path)
         windows = Path(os.environ.get('SystemRoot', r'C:\Windows'))
         command = [str(windows / 'System32' / 'WindowsPowerShell' / 'v1.0' / 'powershell.exe'),
@@ -40,6 +42,18 @@ def extract_text(image_bytes):
             payload = json.loads(result.stdout.lstrip('\ufeff'))
             if not isinstance(payload.get('text'), str):
                 raise ValueError('Invalid OCR output')
-            return dict(text=payload['text'], truncated=False)
-        except (ValueError, AttributeError) as error:
+            text = payload['text']
+            words = []
+            cursor = 0
+            for word in payload.get('words', []):
+                content = word['text']
+                start = text.find(content, cursor)
+                if not content or start < 0:
+                    continue
+                cursor = start + len(content)
+                words.append(dict(text=content, start=start, end=cursor,
+                                  x=float(word['x']) * scale_x, y=float(word['y']) * scale_y,
+                                  width=float(word['width']) * scale_x, height=float(word['height']) * scale_y))
+            return dict(text=text, words=words, truncated=False)
+        except (ValueError, AttributeError, KeyError, TypeError) as error:
             raise RuntimeError(tr('Windows non ha restituito un risultato OCR valido.')) from error

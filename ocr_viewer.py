@@ -16,6 +16,7 @@ logger = logging.getLogger('shakesearch')
 
 
 from local_ocr import extract_text
+from image_text_selection import SelectableImage
 
 
 class RecognitionSignals(QObject):
@@ -46,7 +47,7 @@ class ImagePreview(QScrollArea):
         self.original = pixmap
         self.zoom = 1.0
         self.fit_mode = True
-        self.label = QLabel()
+        self.label = SelectableImage()
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setWidget(self.label)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -177,12 +178,18 @@ class ImageTextWindow(QMainWindow):
         self.text = QPlainTextEdit()
         self.text.setPlaceholderText(tr('Il testo riconosciuto apparirà qui. Puoi modificarlo prima di copiarlo.'))
         splitter.addWidget(self.text)
+        self.text.hide()
+        self.preview.label.selectionChanged.connect(lambda text: self.copy.setEnabled(bool(text or self.text.toPlainText())))
         splitter.setSizes([560, 440])
         layout.addWidget(splitter, 1)
         controls = QHBoxLayout()
         self.retry = QPushButton(tr('Rileggi testo'))
         self.retry.clicked.connect(self.start_recognition)
         controls.addWidget(self.retry)
+        self.toggle_text = QPushButton(tr('Mostra testo separato'))
+        self.toggle_text.setCheckable(True)
+        self.toggle_text.toggled.connect(self.text.setVisible)
+        controls.addWidget(self.toggle_text)
         controls.addStretch()
         self.copy = QPushButton(tr('Copia testo'))
         self.copy.setToolTip(tr('Copia la parte selezionata oppure tutto il testo. Puoi usare anche Ctrl+C.'))
@@ -228,17 +235,21 @@ class ImageTextWindow(QMainWindow):
             self.status.setText(tr('Lettura non riuscita: ') + result['error'])
             return
         self.text.setPlainText(result['text'])
+        self.preview.label.set_ocr(result['text'], result.get('words', []),
+                                   (self.preview.original.width(), self.preview.original.height()))
         if result.get('truncated'):
             self.status.setText(tr('Testo parziale: prova con un’area più piccola. Puoi copiare la parte estratta.'))
         elif result['text']:
-            self.status.setText(tr('Seleziona o correggi il testo, poi copialo. Ctrl+C copia la selezione.'))
+            self.status.setText(tr('Trascina sulle lettere nell’immagine, poi premi Ctrl+C o Copia testo.'))
         else:
             self.status.setText(tr('Nessun testo riconosciuto. Prova con un’immagine più nitida.'))
 
     @Slot()
     def copy_text(self):
         cursor = self.text.textCursor()
-        value = cursor.selectedText().replace('\u2029', '\n') if cursor.hasSelection() else self.text.toPlainText()
+        value = self.preview.label.selected_text()
+        if not value:
+            value = cursor.selectedText().replace('\u2029', '\n') if cursor.hasSelection() else self.text.toPlainText()
         if value:
             QApplication.clipboard().setText(value)
             self.status.setText(tr('Testo copiato negli appunti.'))

@@ -73,10 +73,16 @@ Click **Open image to copy text / Apri immagine per copiare testo** in the drawe
 The image window automatically recognizes text using **Windows OCR**, locally.
 No browser, Lens window, API key, or Internet connection is needed for recognition.
 
-Recognized text appears beside the image. Edit it, select a portion and click
-**Copy text / Copia testo**, or click the button without a selection to copy all.
-**Ctrl+C** copies a text selection normally. Use **Read text again / Rileggi testo**
-to retry. Zoom and fit controls adjust the image preview.
+Drag directly over the letters **on the image** to highlight a selection, then
+press **Ctrl+C** or **Copy text / Copia testo**. You can select part of a word,
+multiple words, or several lines; double-click selects a word. **Ctrl+A** selects
+all recognized text. Selection follows the image when you zoom or scroll.
+
+The image is the main view. **Show separate text / Mostra testo separato** optionally
+opens an editable text pane. Clicking Copy text without a selection copies all
+recognized text. Use **Read text again / Rileggi testo** to retry recognition.
+The selectable layer comes from local Windows OCR; unclear or unrecognized letters
+cannot be selected accurately.
 
 OCR first tries the chosen interface language, then the Windows profile's available
 OCR languages. Install the appropriate language's **Optical character recognition**

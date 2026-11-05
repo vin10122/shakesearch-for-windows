@@ -7,6 +7,10 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
 EN = {
+    'Seleziona tutto': 'Select all',
+    'Mostra testo separato': 'Show separate text',
+    'Trascina sulle lettere nell’immagine, poi premi Ctrl+C o Copia testo.': 'Drag over the letters in the image, then press Ctrl+C or Copy text.',
+
     'Il riconoscimento locale del testo richiede Windows 10 o 11.': 'Local text recognition requires Windows 10 or 11.',
     'La lettura locale ha impiegato troppo tempo. Prova con un ritaglio più piccolo.': 'Local recognition timed out. Try a smaller capture.',
     'Installa una lingua per il riconoscimento testo nelle impostazioni Lingua di Windows.': 'Install a text recognition language in Windows Language settings.',
