@@ -236,7 +236,9 @@ class MultiScreenOverlayManager:
 def main():
     configure_logging()
     sys.excepthook = report_exception
+    from app_icon import configure_qt_icon
     application = QApplication(sys.argv)
+    configure_qt_icon(application)
     application.setQuitOnLastWindowClosed(False)
     application.setApplicationName("ShakeSearch")
     controller = ShakeSearch(application)

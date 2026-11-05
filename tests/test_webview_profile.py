@@ -20,4 +20,4 @@ class WebViewProfileTests(unittest.TestCase):
                 drawer.run_drawer_app(str(image), 0, 0, 560, 680)
             profile = Path(directory) / 'ShakeSearch' / 'WebViewProfile'
             self.assertTrue(profile.is_dir())
-            webview.start.assert_called_once_with(private_mode=False, storage_path=str(profile))
+            webview.start.assert_called_once_with(private_mode=False, storage_path=str(profile), icon=str(drawer.icon_path()))

@@ -1,4 +1,5 @@
 """One WebView GUI process dedicated to Lens; stdout is a JSON-lines protocol."""
+from app_icon import icon_path, set_windows_identity
 import base64
 import json
 import logging
@@ -31,6 +32,7 @@ def lock_profile(profile):
 
 def main(width=900, height=740, profile_name="LensProfile"):
     import webview
+    set_windows_identity()
     from lens_session import LensSession
 
     logging.basicConfig(level=logging.INFO, stream=sys.stderr)
@@ -99,7 +101,7 @@ def main(width=900, height=740, profile_name="LensProfile"):
 
     # The consent profile is deliberately separate from the chat's profile.
     try:
-        webview.start(requests, private_mode=False, storage_path=str(profile))
+        webview.start(requests, private_mode=False, storage_path=str(profile), icon=str(icon_path()))
     finally:
         profile_lock.close()
     return 0

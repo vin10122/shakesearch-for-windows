@@ -39,6 +39,8 @@ jobs:
 
           Terminale e finestra di stato visibili, configurazione al primo avvio, sensibilità del mouse regolabile e modalità di animazione leggera. Alt+F7 è stato rimosso. La finestra Lens si apre con le dimensioni della chat.
 
+          Icona del logo inclusa nell’eseguibile e nelle finestre dell’app.
+
           Build sperimentale non firmata.
           '@
           $notes | Set-Content -Path release-notes.txt -Encoding utf8

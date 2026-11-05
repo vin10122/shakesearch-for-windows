@@ -1,3 +1,4 @@
+from app_icon import icon_path, set_windows_identity
 import sys
 from app_runtime import child_command
 import os
@@ -693,6 +694,7 @@ class DrawerApi:
 def run_drawer_app(image_path, x, y, width, height):
     global GLOBAL_WINDOW
     import webview
+    set_windows_identity()
 
     def on_loaded():
         if os.path.exists(image_path):
@@ -724,7 +726,7 @@ def run_drawer_app(image_path, x, y, width, height):
     # Cookies remain in WebView storage and are never extracted into Python.
     profile = Path(os.getenv('LOCALAPPDATA') or tempfile.gettempdir()) / 'ShakeSearch' / 'WebViewProfile'
     profile.mkdir(parents=True, exist_ok=True)
-    webview.start(private_mode=False, storage_path=str(profile))
+    webview.start(private_mode=False, storage_path=str(profile), icon=str(icon_path()))
 
 
 if __name__ == "__main__":

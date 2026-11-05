@@ -274,7 +274,9 @@ def main():
     from shakesearch import configure_logging
     from PySide6.QtWidgets import QMessageBox
     configure_logging()
+    from app_icon import configure_qt_icon
     app = QApplication(sys.argv)
+    configure_qt_icon(app)
     window = None
     try:
         if len(sys.argv) != 2:
