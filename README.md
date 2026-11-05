@@ -8,26 +8,48 @@ Shake the mouse or click **Select area**, circle what you want, then copy the se
 The project is independent and is not affiliated with Google. Its selection gesture
 is inspired by [Circle to Search](https://blog.google/products/search/google-circle-to-search-android/).
 
-## Download and run
+## Install on Windows
 
-1. Download `ShakeSearch-windows-x64.zip` from the [latest release](https://github.com/vin10122/shakesearch-for-windows/releases/latest).
-2. Extract the entire ZIP.
-3. Open `ShakeSearch/ShakeSearch.exe`. Keep `_internal` beside the EXE.
+**Download the portable app: [ShakeSearch-windows-x64.zip](https://github.com/vin10122/shakesearch-for-windows/releases/latest/download/ShakeSearch-windows-x64.zip).**
 
-The portable build includes Python. It requires Windows 10/11 x64 and Microsoft
-Edge WebView2 Runtime for chat and Lens.
+You need **Windows 10 or Windows 11 (64-bit)** and
+[Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
+Python is included: you do not need to install Python, Git, or any Python packages.
+No API key is needed.
 
-The build is unsigned, so Windows SmartScreen may show a warning. Only run a build
-you trust. You can pin `ShakeSearch.exe` to Start; the EXE and application windows
-use the project logo.
+1. Download the ZIP using the link above, or open the [latest release](https://github.com/vin10122/shakesearch-for-windows/releases/latest) and select the ZIP under **Assets**. The **Source code** archives are for developers.
+2. Right-click the downloaded ZIP and choose **Extract All / Estrai tutto**. Choose a permanent location where you can write files, such as a folder in Documents.
+3. Open the extracted **ShakeSearch** folder and double-click **ShakeSearch.exe**. Run it from the extracted folder, not from inside the ZIP.
+4. Complete the first-launch configuration and click **Save / Salva**. The control window shows that the app is active.
+5. Shake the mouse or click **Select area / Seleziona area** to begin.
+
+Keep the entire extracted folder together, including `_internal`. Moving only the
+EXE will break the app. This portable version does not use an MSI or an installation
+wizard. To add a Start shortcut, right-click the extracted EXE and choose **Pin to
+Start / Aggiungi a Start** (under **Show more options** if needed).
+
+The build is unsigned. If SmartScreen shows **Windows protected your PC / PC protetto
+da Windows**, check that you downloaded the ZIP from this repository's release.
+If you trust that build, choose **More info / Ulteriori informazioni**, then
+**Run anyway / Esegui comunque**, when available.
 
 ### Update an existing copy
 
-Close ShakeSearch, its chat and Lens windows. Extract the new ZIP to the same
-parent folder and replace the existing files. Keep the EXE and `_internal` together;
-avoid nesting one `ShakeSearch` directory inside another. There is no automatic
-updater. Preferences survive replacement because they are stored separately in
-`%LOCALAPPDATA%\ShakeSearch\settings.json`.
+You can reuse the same folder; there is no need to create a new one for each release.
+
+1. Choose **Quit / Esci** in ShakeSearch and close any remaining chat or Lens windows.
+2. Download the new ZIP using the same download link above.
+3. Extract it into the **parent folder** of your existing `ShakeSearch` folder. For example, if the EXE is at `C:\Apps\ShakeSearch\ShakeSearch.exe`, extract the ZIP into `C:\Apps`.
+4. Accept **Replace the files in the destination / Sostituisci i file nella destinazione**.
+5. Start `ShakeSearch.exe` from the same folder as before.
+
+The final path should still be `C:\Apps\ShakeSearch\ShakeSearch.exe`, not
+`C:\Apps\ShakeSearch\ShakeSearch\ShakeSearch.exe`. If Windows says files are in use,
+close the running app before retrying. If a pinned shortcut points to an older
+extraction folder, recreate it using the updated EXE.
+
+There is no automatic updater. Preferences remain in
+`%LOCALAPPDATA%\ShakeSearch\settings.json` and survive replacing the app files.
 
 ## First launch and settings
 
@@ -96,7 +118,7 @@ page structure, require verification, or return no readable results. The app rep
 those failures rather than replacing them with invented answers. Automated tests
 simulate Google responses; they do not establish that every live Google flow works.
 
-## Run from source
+## Run from source (developers only)
 
 Use Python 3.10+ x64 on Windows (the portable build uses Python 3.12):
 
