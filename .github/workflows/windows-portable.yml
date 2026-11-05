@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
   push:
     tags: ['v*']
+    branches: [main]
 permissions:
   contents: write
 jobs:
@@ -16,7 +17,25 @@ jobs:
           architecture: x64
       - name: Test and build portable ZIP
         shell: pwsh
-        run: ./packaging/build-windows.ps1
+        run: |
+          $result = 0
+          try {
+            & ./packaging/build-windows.ps1 *> build-output.txt
+            if ($LASTEXITCODE -ne 0) { $result = 1 }
+          } catch {
+            $_ | Out-String | Add-Content build-output.txt
+            $result = 1
+          } finally {
+            $tail = Get-Content build-output.txt -Tail 100 | Out-String
+            Write-Output $tail
+            if ($result -ne 0) {
+              '### Windows build failure' | Add-Content $env:GITHUB_STEP_SUMMARY
+              '```text' | Add-Content $env:GITHUB_STEP_SUMMARY
+              $tail | Add-Content $env:GITHUB_STEP_SUMMARY
+              '```' | Add-Content $env:GITHUB_STEP_SUMMARY
+            }
+          }
+          exit $result
       - uses: actions/upload-artifact@v4
         with:
           name: ShakeSearch-windows-x64
