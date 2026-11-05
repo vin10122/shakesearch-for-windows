@@ -25,23 +25,6 @@ def sample_png():
     return output.getvalue()
 
 
-class ExtractionTests(unittest.TestCase):
-    def test_lens_text_and_cleanup(self):
-        with patch('lens_process.LensProcessClient') as factory:
-            client = factory.return_value
-            client.poll.return_value = dict(done=True, result=dict(ok=True, text=TEXT))
-            self.assertEqual(extract_text(sample_png()), dict(text=TEXT, truncated=False))
-            factory.assert_called_once_with(sample_png(), window_size=(900, 740), text_viewer=True)
-            client.close.assert_called_once()
-
-    def test_lens_failure_is_reported_and_closed(self):
-        with patch('lens_process.LensProcessClient') as factory:
-            factory.return_value.poll.return_value = dict(done=True, result=dict(ok=False, error='Lens unavailable'))
-            with self.assertRaisesRegex(RuntimeError, 'Lens unavailable'):
-                extract_text(sample_png())
-            factory.return_value.close.assert_called_once()
-
-
 class ImageTextWindowTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -97,10 +80,10 @@ class ImageTextWindowTests(unittest.TestCase):
         self.assertEqual(self.window.text.toPlainText(), TEXT)
 
     def test_error_is_visible_and_image_stays_open(self):
-        self.extractor.side_effect = RuntimeError('Lens unavailable')
+        self.extractor.side_effect = RuntimeError('Windows OCR unavailable')
         with self.assertLogs('shakesearch', level='ERROR'):
             self.recognize()
-        self.assertIn('Lens unavailable', self.window.status.text())
+        self.assertIn('Windows OCR unavailable', self.window.status.text())
         self.assertTrue(self.window.isVisible())
         self.assertTrue(self.window.retry.isEnabled())
         self.assertFalse(self.window.text.isReadOnly())
@@ -130,7 +113,7 @@ class DrawerImageTextTests(unittest.TestCase):
             with patch.object(drawer.subprocess, 'Popen', return_value=process) as launch:
                 self.assertEqual(api.open_image_for_text(), dict(ok=True))
             self.assertEqual(process.stdin.written, original)
-            self.assertEqual(launch.call_args.args[0][-3:], ['--stdin', '560', '680'])
+            self.assertEqual(launch.call_args.args[0][-1], '--stdin')
 
     def test_missing_image_is_reported_without_launching(self):
         with patch.object(drawer, 'GLOBAL_WINDOW', None):

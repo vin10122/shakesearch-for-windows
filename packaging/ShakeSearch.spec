@@ -8,7 +8,7 @@ a = Analysis(
     [str(root / 'portable_main.py')],
     pathex=[str(root)],
     binaries=webview_binaries,
-    datas=webview_data + [(str(root / 'logo-shakesearch.png'), '.'), (str(root / 'assets' / 'shakesearch.ico'), 'assets')],
+    datas=webview_data + [(str(root / 'logo-shakesearch.png'), '.'), (str(root / 'assets' / 'shakesearch.ico'), 'assets'), (str(root / 'scripts' / 'windows-ocr.ps1'), 'scripts')],
     hiddenimports=webview_hidden + ['webview.platforms.edgechromium',
         'pynput.keyboard._win32', 'pynput.mouse._win32', 'win32clipboard',
         'win32con', 'clr'],

@@ -39,7 +39,7 @@ jobs:
 
           Terminale e finestra di stato visibili, configurazione al primo avvio, sensibilità del mouse regolabile e modalità di animazione leggera. Alt+F7 è stato rimosso. La finestra Lens si apre con le dimensioni della chat.
 
-          Icona del logo inclusa nell’eseguibile e nelle finestre dell’app.
+          Copia testo dall’immagine con OCR locale di Windows: nessuna finestra Lens e nessun invio a Google per questa funzione. Richiede una lingua OCR installata. README aggiornato. Icona del logo inclusa nell’eseguibile e nelle finestre dell’app.
 
           Build sperimentale non firmata.
           '@

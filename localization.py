@@ -7,6 +7,12 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
 EN = {
+    'Il riconoscimento locale del testo richiede Windows 10 o 11.': 'Local text recognition requires Windows 10 or 11.',
+    'La lettura locale ha impiegato troppo tempo. Prova con un ritaglio più piccolo.': 'Local recognition timed out. Try a smaller capture.',
+    'Installa una lingua per il riconoscimento testo nelle impostazioni Lingua di Windows.': 'Install a text recognition language in Windows Language settings.',
+    'Riconoscimento Windows non disponibile. Controlla shakesearch.log.': 'Windows recognition is unavailable. Check shakesearch.log.',
+    'Windows non ha restituito un risultato OCR valido.': 'Windows returned an invalid OCR result.',
+
     'Lingua': 'Language',
     'Copia immagine': 'Copy image',
     'Apri immagine per copiare testo': 'Open image to copy text',

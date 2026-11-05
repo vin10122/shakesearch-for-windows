@@ -679,8 +679,7 @@ class DrawerApi:
         try:
             log_path = os.path.join(tempfile.gettempdir(), 'shakesearch.log')
             with open(log_path, 'a', encoding='utf-8') as log:
-                size = (int(GLOBAL_WINDOW.width), int(GLOBAL_WINDOW.height)) if GLOBAL_WINDOW else self.initial_geom[2:]
-                process = subprocess.Popen(child_command('ocr_viewer', '--stdin', *size),
+                process = subprocess.Popen(child_command('ocr_viewer', '--stdin'),
                                            stdin=subprocess.PIPE, stdout=log, stderr=log,
                                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             # Pass the immutable capture, never a path overwritten by later captures.

@@ -1,4 +1,4 @@
-"""Image preview with editable, copyable text read through Google Lens."""
+"""Image preview with editable, copyable text recognized locally by Windows."""
 import logging
 from localization import tr
 import os
@@ -13,27 +13,9 @@ from PySide6.QtWidgets import (QApplication, QHBoxLayout, QLabel, QMainWindow,
                                QSizeGrip, QVBoxLayout, QWidget)
 
 logger = logging.getLogger('shakesearch')
-LENS_WINDOW_SIZE = (900, 740)
 
 
-def extract_text(image_bytes):
-    """Transcribe the same immutable image shown in the preview."""
-    import time
-    from lens_process import LensProcessClient
-
-    client = LensProcessClient(image_bytes, window_size=LENS_WINDOW_SIZE, text_viewer=True)
-    try:
-        token = client.submit('Transcribe the visible text exactly, preserving languages and line breaks. Return only the text.')
-        while True:
-            state = client.poll(token)
-            if state['done']:
-                result = state['result']
-                if not result.get('ok'):
-                    raise RuntimeError(result.get('error', 'Lens failed'))
-                return dict(text=result.get('text', ''), truncated=False)
-            time.sleep(.1)
-    finally:
-        client.close()
+from local_ocr import extract_text
 
 
 class RecognitionSignals(QObject):
@@ -128,7 +110,7 @@ class ImageTextWindow(QMainWindow):
         pixmap = QPixmap()
         if not pixmap.loadFromData(self.image_bytes):
             raise ValueError(tr('Impossibile aprire l’immagine selezionata.'))
-        # The capture flow writes PNG; normalize imported images to PNG for Lens.
+        # The capture flow writes PNG; normalize imported images to PNG for local OCR.
         from PySide6.QtCore import QBuffer, QIODevice
         buffer = QBuffer()
         buffer.open(QIODevice.OpenModeFlag.WriteOnly)
@@ -267,10 +249,6 @@ class ImageTextWindow(QMainWindow):
 
 
 def main():
-    global LENS_WINDOW_SIZE
-    if len(sys.argv) == 4 and sys.argv[1] == '--stdin':
-        LENS_WINDOW_SIZE = (int(sys.argv[2]), int(sys.argv[3]))
-        sys.argv = sys.argv[:2]
     from shakesearch import configure_logging
     from PySide6.QtWidgets import QMessageBox
     configure_logging()

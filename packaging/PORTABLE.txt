@@ -6,7 +6,7 @@ Microsoft Edge WebView2 Runtime must be installed on Windows.
 No Groq account or API key is needed.
 
 Click Select area in the control window or shake the mouse to select an area of the screen.
-Google Lens receives your selected image and questions. Complete any Google
+Only Lens searches send your selected image and questions to Google. Complete any Google
 consent or verification requests in the Lens window.
 Logs: %TEMP%\shakesearch.log
 
@@ -17,3 +17,6 @@ whether the app is active. On first launch, save your language, mouse-shake
 sensitivity, and animation preferences. Reopen Settings to change them later.
 Use Select area for manual capture. Alt+F7 is no longer registered.
 Close the control window or press Quit to stop ShakeSearch.
+
+Open image to copy text uses Windows OCR locally, without Lens or Internet.
+Install a Windows OCR language pack if text recognition is unavailable.
