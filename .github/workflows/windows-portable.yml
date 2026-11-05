@@ -29,8 +29,9 @@ jobs:
             $tail = Get-Content build-output.txt -Tail 100 | Out-String
             Write-Output $tail
             if ($result -ne 0) {
-              $diagnostic = $tail.Substring([Math]::Max(0, $tail.Length - 8000)).Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-              Write-Output "::error title=Windows build diagnostic::$diagnostic"
+              $markers = @('DEPENDENCIES_READY', 'SOURCE_TESTS_READY', 'EXE_BUILT', 'SCREEN_APP_STARTED', 'SCREEN_OCR_WORDS_READY', 'SCREEN_WORD_FOUND', 'SCREEN_COPY_READY', 'OCR_LANGUAGE_MISSING', 'OCR_TIMEOUT', 'OCR_BACKEND_FAILED', 'OCR_SEARCH_NOT_FOUND', 'CLIPBOARD_MISMATCH', 'ImportError', 'ModuleNotFoundError', 'UnicodeEncodeError')
+              $seen = @($markers | Where-Object { $tail.Contains($_) }) -join ', '
+              Write-Output "::error title=Windows build stages::Fixed diagnostic codes observed: $seen"
               '### Windows build failure' | Add-Content $env:GITHUB_STEP_SUMMARY
               '```text' | Add-Content $env:GITHUB_STEP_SUMMARY
               $tail | Add-Content $env:GITHUB_STEP_SUMMARY

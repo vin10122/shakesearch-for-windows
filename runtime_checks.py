@@ -8,6 +8,7 @@ def check_screen_text():
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QApplication
     from overlay import AnimatedScreenOverlay
+    print('CHECK: SCREEN_APP_STARTED', flush=True)
     app = QApplication.instance() or QApplication([])
     app.setQuitOnLastWindowClosed(False)
     image = QPixmap(1000, 500)
@@ -33,17 +34,29 @@ def check_screen_text():
             time.sleep(.02)
         words = overlay.text_layer.words
         if not words:
-            raise RuntimeError('Packaged screen OCR failed: ' + overlay.text_status.text())
+            status = overlay.text_status.text().lower()
+            if 'lingua' in status or 'language' in status:
+                print('CHECK: OCR_LANGUAGE_MISSING', flush=True)
+            elif 'tempo' in status or 'timed out' in status:
+                print('CHECK: OCR_TIMEOUT', flush=True)
+            else:
+                print('CHECK: OCR_BACKEND_FAILED', flush=True)
+            raise RuntimeError('Packaged screen OCR failed')
+        print('CHECK: SCREEN_OCR_WORDS_READY', flush=True)
         word = next((word for word in words if overlay.text_layer.text_content[word['start']:word['end']].upper() == 'SEARCH'), None)
         if word is None:
-            raise RuntimeError('Expected SEARCH in actual OCR: ' + overlay.text_layer.text_content)
+            print('CHECK: OCR_SEARCH_NOT_FOUND', flush=True)
+            raise RuntimeError('Expected word not found')
+        print('CHECK: SCREEN_WORD_FOUND', flush=True)
         rect = overlay.text_layer.word_rect(word)
         QTest.mousePress(overlay, Qt.MouseButton.LeftButton, pos=QPoint(round(rect.left()+1), round(rect.center().y())))
         QTest.mouseMove(overlay, QPoint(round(rect.right()-1), round(rect.center().y())))
         QTest.mouseRelease(overlay, Qt.MouseButton.LeftButton, pos=QPoint(round(rect.right()-1), round(rect.center().y())))
         QTest.keyClick(overlay, Qt.Key.Key_C, Qt.KeyboardModifier.ControlModifier)
         if app.clipboard().text().upper() != 'SEARCH':
-            raise RuntimeError('Packaged image selection/clipboard failed: ' + app.clipboard().text())
+            print('CHECK: CLIPBOARD_MISMATCH', flush=True)
+            raise RuntimeError('Packaged image selection/clipboard failed')
+        print('CHECK: SCREEN_COPY_READY', flush=True)
         print('PASS: frozen EXE, real offline Windows OCR, selection on capture overlay, Ctrl+C', flush=True)
         return 0
     finally:
