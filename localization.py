@@ -121,9 +121,12 @@ def get_language():
 def set_language(language):
     if language not in ('it', 'en'):
         raise ValueError('Unsupported language')
+    write_settings(dict(read_settings(), language=language))
+
+
+def write_settings(settings):
     path = settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    settings = dict(read_settings(), language=language)
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent, delete=False) as output:

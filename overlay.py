@@ -1,6 +1,7 @@
 """Qt screen selection and blue perimeter-to-center-to-perimeter animation."""
 import math
 from localization import tr, get_language
+from app_settings import preferences
 
 from PIL import Image
 from PySide6.QtCore import Qt, QRectF, QPointF, QElapsedTimer, QTimer, QThreadPool, Slot
@@ -10,7 +11,7 @@ from rectangle_snap import RectangleSnapTask
 
 ACCENT = QColor('#3447b8')
 ANIMATION_MS = 2800
-FRAME_INTERVAL_MS = 7  # About 144 updates/s; actual presentation depends on the display.
+FRAME_INTERVAL_MS = 16  # Bound full-screen repaints to about 60 updates/s.
 MIN_SELECTION_SIZE = 25
 
 
@@ -52,10 +53,12 @@ class AnimatedScreenOverlay(QWidget):
         self._confirm_after_snap = False
         self._snap_tasks = {}
         self.clock = QElapsedTimer()
-        self.progress = 0.0
+        self.light_animation = preferences()['animation'] == 'light'
+        self.progress = 1.0 if self.light_animation else 0.0
         self.border_phase = 0.0
         # Only the soft plasma uses a smaller surface. Screenshot, selection and
         # persistent border stay at native resolution, including on 4K monitors.
+        self._plasma_progress = None
         self.plasma_scale = min(1.0, 640 / max(self.width(), self.height()))
         self.plasma_buffer = QImage(math.ceil(self.width() * self.plasma_scale),
                                    math.ceil(self.height() * self.plasma_scale),
@@ -90,11 +93,12 @@ class AnimatedScreenOverlay(QWidget):
 
     def advance_animation(self):
         was_transitioning = self.progress < 1
-        self.progress = min(1.0, self.clock.elapsed() / ANIMATION_MS)
+        self.progress = 1.0 if self.light_animation else min(1.0, self.clock.elapsed() / ANIMATION_MS)
         self.border_phase = (self.clock.elapsed() / 9000) % 1
         if was_transitioning:
             self.update()
         else:
+            self.timer.setInterval(33)
             # Once the plasma has settled, repaint only the thin perimeter.
             self.update(self.border_region)
 
@@ -124,20 +128,22 @@ class AnimatedScreenOverlay(QWidget):
         painter.drawPixmap(self.rect(), self.static_background)
         radius, strength = plasma_state(self.progress)
         if strength > .001:
-            self.plasma_buffer.fill(Qt.GlobalColor.transparent)
-            light = QPainter(self.plasma_buffer)
-            light.setRenderHint(QPainter.RenderHint.Antialiasing)
-            light.scale(self.plasma_scale, self.plasma_scale)
-            for band in range(3):
-                path = self.plasma_path(radius, band)
-                # Layer translucent strokes for a soft glow without CPU image resizes.
-                for width, alpha in ((56, 6), (28, 12), (12, 24), (4, 115)):
-                    color = QColor(52 + band * 15, 71 + band * 20, 184 + band * 25, round(alpha * strength))
-                    pen = QPen(color, width)
-                    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
-                    light.setPen(pen)
-                    light.drawPath(path)
-            light.end()
+            if self._plasma_progress != self.progress:
+                self.plasma_buffer.fill(Qt.GlobalColor.transparent)
+                light = QPainter(self.plasma_buffer)
+                light.setRenderHint(QPainter.RenderHint.Antialiasing)
+                light.scale(self.plasma_scale, self.plasma_scale)
+                for band in range(3):
+                    path = self.plasma_path(radius, band)
+                    # Layer translucent strokes for a soft glow without CPU image resizes.
+                    for width, alpha in ((56, 6), (28, 12), (12, 24), (4, 115)):
+                        color = QColor(52 + band * 15, 71 + band * 20, 184 + band * 25, round(alpha * strength))
+                        pen = QPen(color, width)
+                        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                        light.setPen(pen)
+                        light.drawPath(path)
+                light.end()
+                self._plasma_progress = self.progress
             painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
             painter.drawImage(self.rect(), self.plasma_buffer)
         gradient = QConicalGradient(QPointF(self.width() / 2, self.height() / 2),

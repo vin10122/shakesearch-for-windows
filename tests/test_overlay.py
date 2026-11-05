@@ -236,7 +236,7 @@ class OverlayTests(unittest.TestCase):
         after = self.overlay.grab().toImage()
         self.assertNotEqual(before, after)
         self.assertEqual(before.copy(20, 80, 600, 300), after.copy(20, 80, 600, 300))
-        self.assertLess(FRAME_INTERVAL_MS, 8)
+        self.assertGreaterEqual(FRAME_INTERVAL_MS, 16)
 
     def test_close_stops_continuous_animation(self):
         self.overlay.start_animation()
@@ -247,7 +247,7 @@ class OverlayTests(unittest.TestCase):
         controller = ShakeSearch(self.app)
         calls = []
         with patch.object(controller, 'capture_all_screens', side_effect=lambda: calls.append(threading.get_ident()) or [self.data]), patch('shakesearch.MultiScreenOverlayManager'):
-            thread = threading.Thread(target=controller.on_hotkey_triggered)
+            thread = threading.Thread(target=controller.capture_requested.emit)
             thread.start()
             thread.join()
             QTest.qWait(50)

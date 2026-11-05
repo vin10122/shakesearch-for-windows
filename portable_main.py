@@ -25,4 +25,11 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        if '--role' not in sys.argv and sys.stdin is not None and sys.stdin.isatty():
+            input("ShakeSearch non si è avviato. Premi Invio per chiudere...")
+        raise

@@ -37,7 +37,9 @@ jobs:
 
           Python è incluso. È necessario Microsoft Edge WebView2 Runtime. Non serve una chiave API: ricerca e domande usano Google Lens.
 
-          La finestra Lens si apre con le dimensioni della chat. Build sperimentale non firmata.
+          Terminale e finestra di stato visibili, configurazione al primo avvio, sensibilità del mouse regolabile e modalità di animazione leggera. Alt+F7 è stato rimosso. La finestra Lens si apre con le dimensioni della chat.
+
+          Build sperimentale non firmata.
           '@
           $notes | Set-Content -Path release-notes.txt -Encoding utf8
           gh release create $env:RELEASE_TAG dist/ShakeSearch-windows-x64.zip --verify-tag --title "ShakeSearch $env:RELEASE_TAG — Windows portable" --notes-file release-notes.txt

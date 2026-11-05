@@ -17,8 +17,7 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 # Retain redirected standard streams for the Lens JSON-lines protocol.
-# Hide the main console immediately; owned children use CREATE_NO_WINDOW.
+# Keep the main console visible for status and errors; children use CREATE_NO_WINDOW.
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='ShakeSearch',
-          debug=False, strip=False, upx=False, console=True,
-          hide_console='hide-early')
+          debug=False, strip=False, upx=False, console=True)
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='ShakeSearch')

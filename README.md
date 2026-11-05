@@ -6,7 +6,7 @@ ShakeSearch is an experimental open-source project for Windows that brings an AI
 
 ## Purpose
 
-ShakeSearch lets you select any area of your screen by shaking your mouse or pressing a hotkey. Once you circle an area, a drawer window opens with:
+ShakeSearch lets you select any area of your screen by shaking your mouse or using Select area. Once you circle an area, a drawer window opens with:
 
 - A preview of the captured image
 - Google Lens results about the image
@@ -17,7 +17,7 @@ ShakeSearch lets you select any area of your screen by shaking your mouse or pre
 
 ## Features
 
-- **Quick capture:** shake the mouse or press **Alt + F7**, then circle an area on any connected monitor. A moving ultramarine glow marks the screen edges during selection.
+- **Quick capture:** shake the mouse or click **Seleziona area**, then circle an area on any connected monitor. A moving ultramarine glow marks the screen edges during selection.
 - **Smarter selection:** nearby rectangles can snap to their edges. Hold **Shift** to skip snapping, or adjust the selection by dragging its corners and edges before pressing **Enter**.
 - **Lens chat:** view results and ask questions about the capture using Google Lens. The drawer can be expanded with **F11**.
 - **Copy image and text:** copy the capture to the clipboard, or open it in a separate window to recognize, edit and copy its text.
@@ -69,7 +69,7 @@ Use ShakeSearch when you want help with something you see on your screen. Circle
 
 ## How to use
 
-- Shake your mouse quickly or press Alt + F7 to activate the screen capture.
+- Shake your mouse quickly or click Select area in the control window to activate the screen capture.
 - A darkened overlay appears over your screen.
 - Click and drag to draw a circle around the area you want to select.
 - Nearby visible rectangles are detected locally and the selection snaps to their edges.
@@ -120,7 +120,7 @@ rectangle does not cover the desktop. Fullscreen restores the full window area.
 The capture overlay uses Qt (PySide6). On each monitor, an ultramarine-blue plasma wave
 moves from the edges to the center, returns to the edges, then fades to a thin
 ultramarine-blue perimeter line with a continuously moving highlight. The sequence takes
-2.8 seconds and requests a frame every 7 ms (about 144 updates per second, subject
+2.8 seconds and requests a frame every 16 ms (about 60 updates per second, subject
 to display refresh rate and rendering performance). Selection stays available
 throughout. After the opening sequence, only the border area is repainted. Screenshots remain at their native resolution, including on mixed-DPI
 monitor setups.
@@ -261,3 +261,19 @@ You can also run **Windows portable build** manually from GitHub Actions;
 version tags (`v*`) trigger it too. Download the ZIP from the workflow artifacts.
 The build is unsigned and still needs an interactive Windows smoke test covering
 capture, chat, Lens consent/results, text viewing, clipboard, and child cleanup.
+
+
+### Startup and configuration
+
+The terminal remains visible and a persistent control window shows that ShakeSearch
+is active. Use **Select area** to capture manually, **Settings** to change options,
+or **Quit** to stop the app. Closing the control window also stops the app.
+There is no Alt+F7 shortcut.
+
+On first launch (including upgrades without saved setup preferences), choose the
+interface language, mouse-shake activation, sensitivity, and animation mode.
+Preferences are stored in `%LOCALAPPDATA%\ShakeSearch\settings.json`; they are
+independent of the extracted portable folder. Canceling initial setup exits without
+saving. The light animation mode shows only the border. Balanced mode requests
+about 60 updates per second during the opening effect and 30 afterward; these
+are timer targets, not measured presentation rates.

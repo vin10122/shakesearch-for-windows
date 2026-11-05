@@ -15,6 +15,7 @@ from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from overlay import AnimatedScreenOverlay
+from app_settings import preferences, DISTANCES
 
 SHAKE_DISTANCE_THRESHOLD = 300
 SHAKE_TIME_WINDOW = 0.55
@@ -46,7 +47,10 @@ class ShakeSearch(QObject):
         self.positions = []
         self.last_shake = 0
         self.mouse_listener = None
-        self.hotkey_listener = None
+        self.options = preferences()
+        self._last_move = 0.0
+        self.panel = None
+        self._capture_pending = False
         self.multi_overlay = None
         self.capture_requested.connect(self.trigger_capture, Qt.ConnectionType.QueuedConnection)
         self.application.aboutToQuit.connect(self.stop_listeners)
@@ -65,7 +69,7 @@ class ShakeSearch(QObject):
                        self.positions[i][1] - self.positions[i - 1][1])
             for i in range(1, len(self.positions))
         )
-        if total_distance < SHAKE_DISTANCE_THRESHOLD:
+        if total_distance < DISTANCES[self.options['sensitivity']]:
             return False
 
         dx_signs = []
@@ -90,18 +94,32 @@ class ShakeSearch(QObject):
 
         return False
 
+    def reload_preferences(self):
+        self.options = preferences()
+        self.positions = []
+
     def on_move(self, x, y):
+        # Bound gesture work for high-polling-rate mice (up to 8,000 events/s).
+        now = time.monotonic()
+        if not self.options['shake_enabled'] or now - self._last_move < .008:
+            return
+        self._last_move = now
         if self.detect_shake(x, y):
             self.capture_requested.emit()
 
-    def on_hotkey_triggered(self):
-        logger.info("Alt+F7 received")
-        self.capture_requested.emit()
-
     @Slot()
     def trigger_capture(self):
-        if self.multi_overlay is not None:
+        if self.multi_overlay is not None or self._capture_pending:
             return
+        if self.panel is not None and self.panel.isVisible() and not self.panel.isMinimized():
+            self.panel.showMinimized()
+            self._capture_pending = True
+            QTimer.singleShot(180, self._capture_after_hide)
+            return
+        self._capture_after_hide()
+
+    def _capture_after_hide(self):
+        self._capture_pending = False
         try:
             screen_data = self.capture_all_screens()
             self.multi_overlay = MultiScreenOverlayManager(screen_data, self.on_session_finished)
@@ -128,23 +146,31 @@ class ShakeSearch(QObject):
         self.multi_overlay = None
 
     def stop_listeners(self):
-        for listener in (self.mouse_listener, self.hotkey_listener):
+        for listener in (self.mouse_listener,):
             if listener is not None:
                 listener.stop()
 
     def run(self):
         # Import platform input backends only when starting global input listeners.
-        from pynput import mouse, keyboard
+        from pynput import mouse
+        from control_panel import ControlPanel, SettingsDialog
+        from localization import read_settings
+        from PySide6.QtWidgets import QDialog
         try:
+            if not read_settings().get('setup_complete'):
+                if SettingsDialog().exec() != QDialog.DialogCode.Accepted:
+                    return 0
+                self.reload_preferences()
             self.mouse_listener = mouse.Listener(on_move=self.on_move)
             self.mouse_listener.start()
-            self.hotkey_listener = keyboard.GlobalHotKeys({'<alt>+<f7>': self.on_hotkey_triggered})
-            self.hotkey_listener.start()
-            logger.info("Ready: Alt+F7 or shake the mouse")
-            print("[ShakeSearch] Active! Press Alt+F7 or shake the mouse.")
+            self.panel = ControlPanel(self)
+            self.panel.show()
+            logger.info("Ready: shake the mouse or use Select area")
+            print("[ShakeSearch] Attivo. Scuoti il mouse o usa Seleziona area. Chiudi la finestra per uscire.", flush=True)
             return self.application.exec()
         finally:
             self.stop_listeners()
+
 
 
 class MultiScreenOverlayManager:

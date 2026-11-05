@@ -5,9 +5,15 @@ Keep the _internal folder next to the executable. Python is included.
 Microsoft Edge WebView2 Runtime must be installed on Windows.
 No Groq account or API key is needed.
 
-Press Alt+F7 or shake the mouse to select an area of the screen.
+Click Select area in the control window or shake the mouse to select an area of the screen.
 Google Lens receives your selected image and questions. Complete any Google
 consent or verification requests in the Lens window.
 Logs: %TEMP%\shakesearch.log
 
 This is an unsigned experimental build. Windows may show a publisher warning.
+
+The terminal stays visible while ShakeSearch runs. The control window shows
+whether the app is active. On first launch, save your language, mouse-shake
+sensitivity, and animation preferences. Reopen Settings to change them later.
+Use Select area for manual capture. Alt+F7 is no longer registered.
+Close the control window or press Quit to stop ShakeSearch.
