@@ -6,16 +6,11 @@ if ($LASTEXITCODE -ne 0) { throw 'Cannot create build environment' }
 $python = Join-Path $PWD '.venv-build\Scripts\python.exe'
 & $python -m pip install -r requirements.txt 'pyinstaller==6.16.0' pythonnet
 if ($LASTEXITCODE -ne 0) { throw 'Dependency installation failed' }
-Write-Output 'CHECK: DEPENDENCIES_READY'
 $env:QT_QPA_PLATFORM = 'offscreen'
 & $python -m unittest discover -s tests -v
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
-Write-Output 'CHECK: SOURCE_TESTS_READY'
 & $python -m PyInstaller --noconfirm --clean packaging/ShakeSearch.spec
 if ($LASTEXITCODE -ne 0) { throw 'Packaging failed' }
-Write-Output 'CHECK: EXE_BUILT'
-& ./dist/ShakeSearch/ShakeSearch.exe --check-screen-text
-if ($LASTEXITCODE -ne 0) { throw 'Packaged screen text selection smoke test failed' }
 Copy-Item packaging/PORTABLE.txt dist/ShakeSearch/README.txt
 Copy-Item LICENSE dist/ShakeSearch/LICENSE.txt
 Compress-Archive -Path dist/ShakeSearch -DestinationPath dist/ShakeSearch-windows-x64.zip -Force

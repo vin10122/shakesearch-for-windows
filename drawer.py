@@ -1,12 +1,10 @@
 from app_icon import icon_path, set_windows_identity
 import sys
-from app_runtime import child_command
 import os
 import json
 import base64
 import threading
 import logging
-import subprocess
 import tempfile
 from pathlib import Path
 from image_clipboard import copy_image_to_clipboard
@@ -337,9 +335,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       <button class="btn-action" id="copyImageButton" onclick="copyImage()">
         📋 <span data-i18n="Copia immagine">Copia immagine</span>
       </button>
-      <button class="btn-action" id="openTextImage" onclick="openImageForText()">
-        <span data-i18n="Apri immagine per copiare testo">Apri immagine per copiare testo</span>
-      </button>
       <button class="btn-action" onclick="toggleFs()">
         <span id="fsActionLabel">⛶ Schermo intero</span>
       </button>
@@ -487,19 +482,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
       status.textContent = result.ok ? t('Immagine copiata negli appunti.') : t(result.error);
     } catch (error) {
       status.textContent = t('Impossibile copiare l’immagine. Riprova.');
-    } finally {
-      button.disabled = false;
-    }
-  }
-
-  async function openImageForText() {
-    const button = document.getElementById('openTextImage');
-    button.disabled = true;
-    try {
-      const result = await pywebview.api.open_image_for_text();
-      if (!result.ok) setStatus(t(result.error));
-    } catch (error) {
-      setStatus(t('Impossibile aprire l’immagine. Riprova.'));
     } finally {
       button.disabled = false;
     }
@@ -672,23 +654,6 @@ class DrawerApi:
             self._lens_jobs.clear()
         for client in clients:
             client.close()
-
-    def open_image_for_text(self):
-        if not self.image_bytes:
-            return dict(ok=False, error='Immagine non disponibile. Esegui una nuova cattura.')
-        try:
-            log_path = os.path.join(tempfile.gettempdir(), 'shakesearch.log')
-            with open(log_path, 'a', encoding='utf-8') as log:
-                process = subprocess.Popen(child_command('ocr_viewer', '--stdin'),
-                                           stdin=subprocess.PIPE, stdout=log, stderr=log,
-                                           creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-            # Pass the immutable capture, never a path overwritten by later captures.
-            with process.stdin:
-                process.stdin.write(self.image_bytes)
-            return dict(ok=True)
-        except Exception:
-            logging.getLogger('shakesearch').exception('Unable to open image text viewer')
-            return dict(ok=False, error='Impossibile aprire l’immagine. Controlla shakesearch.log.')
 
 def run_drawer_app(image_path, x, y, width, height):
     global GLOBAL_WINDOW

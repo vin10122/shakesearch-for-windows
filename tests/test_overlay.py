@@ -18,9 +18,6 @@ from shakesearch import MultiScreenOverlayManager, ShakeSearch
 class OverlayTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.ocr_patch = patch('overlay.AnimatedScreenOverlay.start_text_recognition')
-        cls.ocr_patch.start()
-        cls.addClassCleanup(cls.ocr_patch.stop)
         cls.app = QApplication.instance() or QApplication([])
         cls.app.setQuitOnLastWindowClosed(False)
 

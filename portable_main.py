@@ -5,9 +5,6 @@ import sys
 
 def main():
     multiprocessing.freeze_support()
-    if sys.argv[1:] == ['--check-screen-text']:
-        from runtime_checks import check_screen_text
-        return check_screen_text()
     if len(sys.argv) >= 3 and sys.argv[1] == '--role':
         role = sys.argv[2]
         sys.argv = [sys.argv[0]] + sys.argv[3:]
@@ -19,9 +16,6 @@ def main():
         if role == 'lens_worker':
             from lens_worker import main as worker_main
             return worker_main(int(sys.argv[1]), int(sys.argv[2]), sys.argv[3])
-        if role == 'ocr_viewer':
-            from ocr_viewer import main as viewer_main
-            return viewer_main()
         raise ValueError(f'Unknown application role: {role}')
     from shakesearch import main as capture_main
     return capture_main()

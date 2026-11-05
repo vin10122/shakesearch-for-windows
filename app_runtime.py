@@ -4,7 +4,7 @@ import sys
 
 
 def child_command(role, *arguments):
-    if role not in {'drawer', 'lens_worker', 'ocr_viewer'}:
+    if role not in {'drawer', 'lens_worker'}:
         raise ValueError(f'Unknown application role: {role}')
     if getattr(sys, 'frozen', False):
         command = [sys.executable, '--role', role]

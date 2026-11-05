@@ -3,7 +3,6 @@ on:
   workflow_dispatch:
   push:
     tags: ['v*']
-    branches: [main]
 permissions:
   contents: write
 jobs:
@@ -17,28 +16,7 @@ jobs:
           architecture: x64
       - name: Test and build portable ZIP
         shell: pwsh
-        run: |
-          $result = 0
-          try {
-            & ./packaging/build-windows.ps1 *> build-output.txt
-            if ($LASTEXITCODE -ne 0) { $result = 1 }
-          } catch {
-            $_ | Out-String | Add-Content build-output.txt
-            $result = 1
-          } finally {
-            $tail = Get-Content build-output.txt -Tail 100 | Out-String
-            Write-Output $tail
-            if ($result -ne 0) {
-              $markers = @('DEPENDENCIES_READY', 'SOURCE_TESTS_READY', 'EXE_BUILT', 'SCREEN_APP_STARTED', 'SCREEN_OCR_WORDS_READY', 'SCREEN_WORD_FOUND', 'SCREEN_COPY_READY', 'OCR_LANGUAGE_MISSING', 'OCR_TIMEOUT', 'OCR_BACKEND_FAILED', 'OCR_SEARCH_NOT_FOUND', 'CLIPBOARD_MISMATCH', 'ImportError', 'ModuleNotFoundError', 'UnicodeEncodeError')
-              $seen = @($markers | Where-Object { $tail.Contains($_) }) -join ', '
-              Write-Output "::error title=Windows build stages::Fixed diagnostic codes observed: $seen"
-              '### Windows build failure' | Add-Content $env:GITHUB_STEP_SUMMARY
-              '```text' | Add-Content $env:GITHUB_STEP_SUMMARY
-              $tail | Add-Content $env:GITHUB_STEP_SUMMARY
-              '```' | Add-Content $env:GITHUB_STEP_SUMMARY
-            }
-          }
-          exit $result
+        run: ./packaging/build-windows.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: ShakeSearch-windows-x64
@@ -61,9 +39,7 @@ jobs:
 
           Terminale e finestra di stato visibili, configurazione al primo avvio, sensibilità del mouse regolabile e modalità di animazione leggera. Alt+F7 è stato rimosso. La finestra Lens si apre con le dimensioni della chat.
 
-          Copia il testo direttamente dopo lo shake: l’overlay riconosce il testo localmente, permette di trascinare sulle lettere e copiarle con Ctrl+C o Copia testo. Non occorre aprire chat, lettore o Lens. Per cerchiare un’immagine partendo dal testo, disattiva Seleziona testo.
-
-          La build verifica anche l’EXE compilato con OCR Windows reale, selezione nell’overlay e copia negli appunti.
+          La copia del testo dalle immagini arriverà presto. La funzione e il relativo pulsante sono stati rimossi da questa versione. Restano disponibili selezione e copia dell’immagine e ricerca con Google Lens.
 
           Build sperimentale non firmata.
           '@

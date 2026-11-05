@@ -3,8 +3,7 @@
 ![ShakeSearch](logo-shakesearch.png)
 
 ShakeSearch is an experimental open-source screen selection tool for Windows 10/11.
-Shake the mouse or click **Select area**, circle what you want, then copy the image,
-extract its text locally, or search with Google Lens. No API key is required.
+Shake the mouse or click **Select area**, circle what you want, then copy the selected image or search with Google Lens. No API key is required.
 
 The project is independent and is not affiliated with Google. Its selection gesture
 is inspired by [Circle to Search](https://blog.google/products/search/google-circle-to-search-android/).
@@ -16,8 +15,7 @@ is inspired by [Circle to Search](https://blog.google/products/search/google-cir
 3. Open `ShakeSearch/ShakeSearch.exe`. Keep `_internal` beside the EXE.
 
 The portable build includes Python. It requires Windows 10/11 x64 and Microsoft
-Edge WebView2 Runtime for chat and Lens. Local text recognition uses Windows OCR
-and an installed OCR language pack. It works offline and does not open Lens.
+Edge WebView2 Runtime for chat and Lens.
 
 The build is unsigned, so Windows SmartScreen may show a warning. Only run a build
 you trust. You can pin `ShakeSearch.exe` to Start; the EXE and application windows
@@ -67,50 +65,13 @@ The chat drawer shows your capture and search controls. **Copy image / Copia imm
 copies the original image to the Windows clipboard. **F11** toggles the chat's
 fullscreen view; **Esc** closes the chat.
 
-## Copy text immediately after shaking the mouse
+## Coming soon: copy text from images
 
-Shake the mouse (or use Select area). The frozen screen starts **local Windows OCR**
-automatically, without opening chat, Lens, or an image viewer. The overlay shows
-recognition progress and the running app version.
+**La copia del testo dalle immagini arriverà presto.**
 
-1. Wait for **Drag over text · Ctrl+C to copy**.
-2. Drag directly over the letters on the frozen screen, or double-click a word.
-3. Press **Ctrl+C** or click **Copy text** in the overlay toolbar.
-
-**Select all** selects all recognized text on the current monitor. Selection and
-clipboard copying work independently on each monitor, including mixed-DPI screens.
-To draw an image area starting over text, turn off **Select text**, then draw and
-press Enter as usual. Text selection alone never opens the chat or Lens. Press
-Esc to clear a text selection, then Esc again to exit.
-
-If Windows OCR is unavailable or no text is detected, the overlay shows that result;
-it does not silently open Lens. An installed Windows OCR language is required.
-
-## Copy text from a separate image window
-
-Click **Open image to copy text / Apri immagine per copiare testo** in the drawer.
-The image window automatically recognizes text using **Windows OCR**, locally.
-No browser, Lens window, API key, or Internet connection is needed for recognition.
-
-Drag directly over the letters **on the image** to highlight a selection, then
-press **Ctrl+C** or **Copy text / Copia testo**. You can select part of a word,
-multiple words, or several lines; double-click selects a word. **Ctrl+A** selects
-all recognized text. Selection follows the image when you zoom or scroll.
-
-The image is the main view. **Show separate text / Mostra testo separato** optionally
-opens an editable text pane. Clicking Copy text without a selection copies all
-recognized text. Use **Read text again / Rileggi testo** to retry recognition.
-The selectable layer comes from local Windows OCR; unclear or unrecognized letters
-cannot be selected accurately.
-
-OCR first tries the chosen interface language, then the Windows profile's available
-OCR languages. Install the appropriate language's **Optical character recognition**
-feature in Windows Language settings if recognition is unavailable. Accuracy depends
-on the image and installed languages. Large images are scaled to the Windows OCR
-size limit; selecting a smaller region can improve small-text recognition.
-
-The capture is stored temporarily on this PC for recognition and removed after
-the request finishes. Text is not sent to Google by this feature.
+Direct text selection and copying from screen captures is planned for a future
+version. It is not available in this release: the OCR reader and its buttons have
+been removed. Image capture, image copying, and Google Lens search remain available.
 
 ## Google Lens search (experimental)
 
@@ -147,8 +108,8 @@ python -m venv .venv
 .\.venv\Scripts\python.exe shakesearch.py
 ```
 
-No `.env` file or Groq configuration is needed. Windows OCR and WebView2 are Windows
-components; the complete desktop workflow requires Windows.
+No `.env` file or Groq configuration is needed. The complete desktop workflow
+requires Windows and WebView2.
 
 ## Build the portable EXE
 
@@ -159,18 +120,12 @@ powershell -ExecutionPolicy Bypass -File packaging/build-windows.ps1
 ```
 
 The script creates `.venv-build`, installs dependencies, runs tests, builds with
-PyInstaller, and creates `dist/ShakeSearch-windows-x64.zip`. Chat, Lens, and the text
-viewer run as isolated roles of the same executable. The local OCR PowerShell helper
-is included in `_internal/scripts` and uses the built-in Windows runtime.
-
-Before producing the ZIP, the build also runs the **compiled EXE** against a known
-text image, checks real Windows OCR word positions, selects a word on the capture
-overlay, and verifies Ctrl+C clipboard output.
+PyInstaller, and creates `dist/ShakeSearch-windows-x64.zip`. Chat and Lens run as isolated roles of the same executable.
 
 The **Windows portable build** GitHub Actions workflow can run manually. Pushing a
 `v*` tag builds and publishes a release with the ZIP after tests pass. Manual runs
 provide a downloadable workflow artifact. Test screen capture, windows, clipboard,
-local text recognition, and live Lens on a Windows desktop before distributing.
+and live Lens on a Windows desktop before distributing.
 
 ## Development checks
 
@@ -181,8 +136,7 @@ QT_QPA_PLATFORM=offscreen python -m unittest discover -s tests -v
 ```
 
 It covers selection rendering, adjustment, multi-monitor lifecycle, gesture settings,
-clipboard behavior, worker IPC, simulated Lens requests, and local OCR handling.
-The real Windows OCR test runs only on Windows; other platforms skip it.
+image clipboard behavior, worker IPC, and simulated Lens requests.
 
 Optional browser checks use simulated Google pages:
 
@@ -198,7 +152,6 @@ python tests/check_language_browser.py
 ## Troubleshooting
 
 - **No capture after shaking:** enable mouse activation in Settings, raise sensitivity, or use Select area.
-- **Text recognition unavailable:** install a Windows OCR language pack. The image window remains open so you can retry.
 - **Lens cannot read results:** check the visible Google window, complete any consent/verification and try again.
 - **Missing clipboard dependency when running from source:** reinstall `requirements.txt` to include `pywin32`.
 - **Old icon after updating:** recreate the pinned shortcut so Windows can refresh it.
@@ -212,5 +165,5 @@ notepad "$env:TEMP\shakesearch.log"
 ## License and privacy
 
 MIT License. Experimental software, provided as-is without warranty.
-Local OCR and rectangle detection run on your PC. Lens searches send your selected
+Rectangle detection runs on your PC. Lens searches send your selected
 image and questions to Google; avoid sending sensitive information through that flow.
