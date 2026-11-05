@@ -1,5 +1,6 @@
 """Nonblocking JSON-lines client for an isolated Lens/WebView worker process."""
 import base64
+from app_runtime import child_command
 import json
 import logging
 from pathlib import Path
@@ -105,12 +106,8 @@ class LensProcessClient:
 
     def _run(self):
         try:
-            executable = Path(sys.executable)
-            if executable.name.lower() == 'pythonw.exe' and executable.with_name('python.exe').is_file():
-                executable = executable.with_name('python.exe')
-            script = Path(__file__).with_name('lens_worker.py')
             with open(Path(tempfile.gettempdir()) / 'shakesearch.log', 'a', encoding='utf-8') as log:
-                process = self.process_factory([str(executable), str(script), str(self.window_size[0]), str(self.window_size[1]), "LensTextProfile" if self.text_viewer else "LensProfile"], stdin=subprocess.PIPE,
+                process = self.process_factory(child_command('lens_worker', *self.window_size, 'LensTextProfile' if self.text_viewer else 'LensProfile'), stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE, stderr=log, text=True, encoding='utf-8', bufsize=1,
                     creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             self._process = process

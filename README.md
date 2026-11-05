@@ -242,3 +242,22 @@ MIT License
 ## Disclaimer
 
 This project is experimental. It uses Google Lens. Screen captures are processed by an external service. Do not use this tool to capture sensitive or private information unless you understand and accept the privacy implications of sending images to Google.
+
+## Portable Windows EXE
+
+To build the portable Windows x64 version, use Python 3.12 x64 on Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging/build-windows.ps1
+```
+
+The script uses a separate build environment, runs the test suite, and packages
+`dist/ShakeSearch-windows-x64.zip`. Extract the entire ZIP and launch
+`ShakeSearch/ShakeSearch.exe`; keep its `_internal` folder alongside it.
+Python is included. Microsoft Edge WebView2 Runtime is still required.
+Chat, Lens, and the text viewer run as isolated roles of the same executable.
+
+You can also run **Windows portable build** manually from GitHub Actions;
+version tags (`v*`) trigger it too. Download the ZIP from the workflow artifacts.
+The build is unsigned and still needs an interactive Windows smoke test covering
+capture, chat, Lens consent/results, text viewing, clipboard, and child cleanup.

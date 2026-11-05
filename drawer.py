@@ -1,4 +1,5 @@
 import sys
+from app_runtime import child_command
 import os
 import json
 import base64
@@ -675,14 +676,10 @@ class DrawerApi:
         if not self.image_bytes:
             return dict(ok=False, error='Immagine non disponibile. Esegui una nuova cattura.')
         try:
-            script = str(Path(__file__).with_name('ocr_viewer.py'))
             log_path = os.path.join(tempfile.gettempdir(), 'shakesearch.log')
-            executable = Path(sys.executable)
-            if executable.name.lower() == 'pythonw.exe' and executable.with_name('python.exe').is_file():
-                executable = executable.with_name('python.exe')
             with open(log_path, 'a', encoding='utf-8') as log:
                 size = (int(GLOBAL_WINDOW.width), int(GLOBAL_WINDOW.height)) if GLOBAL_WINDOW else self.initial_geom[2:]
-                process = subprocess.Popen([str(executable), script, '--stdin', str(size[0]), str(size[1])],
+                process = subprocess.Popen(child_command('ocr_viewer', '--stdin', *size),
                                            stdin=subprocess.PIPE, stdout=log, stderr=log,
                                            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             # Pass the immutable capture, never a path overwritten by later captures.

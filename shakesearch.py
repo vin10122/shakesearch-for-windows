@@ -1,5 +1,6 @@
 """ShakeSearch desktop entry point. Qt owns all capture and animation windows."""
 import logging
+from app_runtime import child_command
 from localization import tr
 from logging.handlers import RotatingFileHandler
 import math
@@ -184,10 +185,10 @@ class MultiScreenOverlayManager:
             height = min(680, max(200, int(work.height() * .82)))
             x = work.x() + (work.width() - width) // 2
             y = work.y() + work.height() - height - 14
-            script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "drawer.py")
             with open(LOG_PATH, 'a', encoding='utf-8') as log:
-                subprocess.Popen([sys.executable, script, path, str(x), str(y),
-                                  str(width), str(height)], stdout=log, stderr=log)
+                subprocess.Popen(child_command('drawer', path, x, y, width, height),
+                                 stdout=log, stderr=log,
+                                 creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         except Exception:
             logger.exception("Unable to launch chat drawer")
             QMessageBox.critical(None, "ShakeSearch", tr("Unable to open chat. Details: ") + LOG_PATH)
