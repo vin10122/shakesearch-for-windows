@@ -93,6 +93,48 @@ class ConfigurationTests(unittest.TestCase):
             controller.toggle_shake()
         self.assertTrue(controller.options['shake_enabled'])
 
+    def test_keyboard_hotkey_callback_only_toggles_shakes(self):
+        controller = ShakeSearch(self.app)
+        keyboard = Mock()
+        with patch.object(controller, 'capture_all_screens') as screenshot, \
+                patch.object(controller, '_request_capture') as capture:
+            controller.start_shake_toggle_hotkey(keyboard)
+            keyboard.HotKey.parse.assert_called_once_with('<alt>+<f7>')
+            callback = keyboard.HotKey.call_args.args[1]
+            for expected in (False, True, False, True):
+                callback()
+                self.app.processEvents()
+                self.assertEqual(controller.options['shake_enabled'], expected)
+            capture.assert_not_called()
+            screenshot.assert_not_called()
+
+    def test_disabling_shakes_cancels_delayed_capture_even_after_reenabling(self):
+        controller = ShakeSearch(self.app)
+        controller.panel = Mock()
+        controller.panel.isMinimized.return_value = False
+        with patch('shakesearch.QTimer.singleShot') as timer, \
+                patch.object(controller, 'capture_all_screens') as screenshot:
+            controller.trigger_shake_capture()
+            delayed_capture = timer.call_args.args[1]
+            controller.toggle_shake()
+            controller.toggle_shake()
+            delayed_capture()
+            screenshot.assert_not_called()
+            self.assertFalse(controller._capture_pending)
+
+    def test_gaming_mode_preserves_delayed_manual_capture(self):
+        controller = ShakeSearch(self.app)
+        controller.panel = Mock()
+        controller.panel.isMinimized.return_value = False
+        with patch('shakesearch.QTimer.singleShot') as timer, \
+                patch.object(controller, 'capture_all_screens', return_value=[{}]) as screenshot, \
+                patch('shakesearch.MultiScreenOverlayManager'):
+            controller.trigger_capture()
+            delayed_capture = timer.call_args.args[1]
+            controller.toggle_shake()
+            delayed_capture()
+            screenshot.assert_called_once()
+
     def test_notifications_describe_gaming_mode_and_reactivation(self):
         for language in ('it', 'en'):
             with self.subTest(language=language):

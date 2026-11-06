@@ -53,6 +53,7 @@ class ShakeSearch(QObject):
         self._last_move = 0.0
         self.panel = None
         self._capture_pending = False
+        self._shake_generation = 0
         self.multi_overlay = None
         self.capture_requested.connect(self.trigger_shake_capture, Qt.ConnectionType.QueuedConnection)
         self.shake_toggle_requested.connect(self.toggle_shake, Qt.ConnectionType.QueuedConnection)
@@ -98,6 +99,7 @@ class ShakeSearch(QObject):
         return False
 
     def reload_preferences(self):
+        self._shake_generation += 1
         self.options = preferences()
         self.positions = []
 
@@ -119,7 +121,7 @@ class ShakeSearch(QObject):
     def trigger_shake_capture(self):
         # A queued gesture must not open a capture after Gaming mode is enabled.
         if self.options['shake_enabled']:
-            self.trigger_capture()
+            self._request_capture(self._shake_generation)
 
     def on_move(self, x, y):
         # Bound gesture work for high-polling-rate mice (up to 8,000 events/s).
@@ -132,17 +134,24 @@ class ShakeSearch(QObject):
 
     @Slot()
     def trigger_capture(self):
+        # Manual capture is available independently of shake activation.
+        self._request_capture()
+
+    def _request_capture(self, shake_generation=None):
         if self.multi_overlay is not None or self._capture_pending:
             return
         if self.panel is not None and self.panel.isVisible() and not self.panel.isMinimized():
             self.panel.showMinimized()
             self._capture_pending = True
-            QTimer.singleShot(180, self._capture_after_hide)
+            QTimer.singleShot(180, lambda: self._capture_after_hide(shake_generation))
             return
-        self._capture_after_hide()
+        self._capture_after_hide(shake_generation)
 
-    def _capture_after_hide(self):
+    def _capture_after_hide(self, shake_generation=None):
         self._capture_pending = False
+        if shake_generation is not None and (
+                shake_generation != self._shake_generation or not self.options['shake_enabled']):
+            return
         try:
             screen_data = self.capture_all_screens()
             self.multi_overlay = MultiScreenOverlayManager(screen_data, self.on_session_finished)
@@ -173,6 +182,15 @@ class ShakeSearch(QObject):
             if listener is not None:
                 listener.stop()
 
+    def start_shake_toggle_hotkey(self, keyboard):
+        # Alt+F7 has exactly one action: toggle shake reception. Never capture.
+        hotkey = keyboard.HotKey(keyboard.HotKey.parse('<alt>+<f7>'),
+                                self.shake_toggle_requested.emit)
+        self.keyboard_listener = keyboard.Listener(
+            on_press=lambda key: hotkey.press(self.keyboard_listener.canonical(key)),
+            on_release=lambda key: hotkey.release(self.keyboard_listener.canonical(key)))
+        self.keyboard_listener.start()
+
     def run(self):
         # Import platform input backends only when starting global input listeners.
         from pynput import mouse, keyboard
@@ -186,12 +204,7 @@ class ShakeSearch(QObject):
                 self.reload_preferences()
             self.mouse_listener = mouse.Listener(on_move=self.on_move)
             self.mouse_listener.start()
-            hotkey = keyboard.HotKey(keyboard.HotKey.parse('<alt>+<f7>'),
-                                    self.shake_toggle_requested.emit)
-            self.keyboard_listener = keyboard.Listener(
-                on_press=lambda key: hotkey.press(self.keyboard_listener.canonical(key)),
-                on_release=lambda key: hotkey.release(self.keyboard_listener.canonical(key)))
-            self.keyboard_listener.start()
+            self.start_shake_toggle_hotkey(keyboard)
             self.panel = ControlPanel(self)
             self.panel.show()
             QTimer.singleShot(0, self.panel.notify_shake_state)
