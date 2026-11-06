@@ -1,6 +1,9 @@
 """Persistent status window and first-run configuration."""
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-    QFormLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QVBoxLayout, QWidget)
+    QFormLayout, QLabel, QMainWindow, QMessageBox, QPushButton, QSystemTrayIcon,
+    QToolTip, QVBoxLayout, QWidget)
+from PySide6.QtGui import QIcon
+from app_icon import icon_path
 from localization import get_language
 from app_version import VERSION
 from app_settings import preferences, save_preferences
@@ -57,6 +60,8 @@ class ControlPanel(QMainWindow):
     def __init__(self, controller):
         super().__init__()
         self.controller = controller
+        self.tray = QSystemTrayIcon(QIcon(str(icon_path())), self)
+        controller.application.aboutToQuit.connect(self.tray.hide)
         self.setWindowTitle('ShakeSearch ' + VERSION)
         self.resize(430, 260)
         container = QWidget()
@@ -77,22 +82,47 @@ class ControlPanel(QMainWindow):
         self.refresh()
 
     def refresh(self):
-        enabled = self.controller.options['shake_enabled']
-        self.status.setText(label('ShakeSearch è attivo.\n' + ('Scuoti il mouse oppure premi Seleziona area.' if enabled else 'Premi Seleziona area per iniziare.'),
-                                  'ShakeSearch is active.\n' + ('Shake the mouse or press Select area.' if enabled else 'Press Select area to begin.')))
+        title, message = self.shake_status()
+        self.status.setText(title + '\n' + message)
+        self.tray.setToolTip(title)
         self.capture.setText(label('Seleziona area', 'Select area'))
         self.configure.setText(label('Configurazione', 'Settings'))
         self.quit_button.setText(label('Esci', 'Quit'))
+
+    def shake_status(self):
+        if self.controller.options['shake_enabled']:
+            return (label('ShakeSearch — Shake attivi', 'ShakeSearch — Shakes enabled'),
+                    label('Scuoti il mouse oppure premi Seleziona area. Alt+F7 attiva la Gaming mode.',
+                          'Shake the mouse or press Select area. Alt+F7 enables Gaming mode.'))
+        return ('ShakeSearch — Gaming mode',
+                label('Shake disattivati per evitare interferenze mentre giochi con DPI alti. '
+                      'Seleziona area resta disponibile. Alt+F7 riattiva gli shake.',
+                      'Shakes disabled to avoid interference while gaming with high DPI. '
+                      'Select area remains available. Alt+F7 re-enables shakes.'))
+
+    def notify_shake_state(self):
+        title, message = self.shake_status()
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            if not self.tray.isVisible():
+                self.tray.show()
+            self.tray.showMessage(title, message, QSystemTrayIcon.MessageIcon.Information, 5000)
+        else:
+            # A nonmodal fallback for desktops without a notification area.
+            QToolTip.showText(self.mapToGlobal(self.rect().center()), title + '\n' + message, self)
 
     def capture_now(self):
         self.controller.trigger_capture()
 
     def settings(self):
+        was_enabled = self.controller.options['shake_enabled']
         if SettingsDialog(self).exec() == QDialog.DialogCode.Accepted:
             self.controller.reload_preferences()
             self.refresh()
+            if self.controller.options['shake_enabled'] != was_enabled:
+                self.notify_shake_state()
 
     def closeEvent(self, event):
         # Closing this window stops the app; it never silently remains running.
         self.controller.application.quit()
+        self.tray.hide()
         event.accept()

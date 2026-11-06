@@ -11,7 +11,7 @@ $env:QT_QPA_PLATFORM = 'offscreen'
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
 & $python -m PyInstaller --noconfirm --clean packaging/ShakeSearch.spec
 if ($LASTEXITCODE -ne 0) { throw 'Packaging failed' }
-Copy-Item packaging/PORTABLE.txt dist/ShakeSearch/README.txt
-Copy-Item LICENSE dist/ShakeSearch/LICENSE.txt
-Compress-Archive -Path dist/ShakeSearch -DestinationPath dist/ShakeSearch-windows-x64.zip -Force
-Get-FileHash dist/ShakeSearch-windows-x64.zip -Algorithm SHA256
+if (-not (Test-Path dist/ShakeSearch.exe -PathType Leaf)) { throw 'Single-file EXE not found' }
+& ./dist/ShakeSearch.exe --self-test
+if ($LASTEXITCODE -ne 0) { throw 'Single-file EXE smoke test failed' }
+Get-FileHash dist/ShakeSearch.exe -Algorithm SHA256

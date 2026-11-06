@@ -1,6 +1,16 @@
 """Launch the same application roles from source or a frozen Windows bundle."""
 from pathlib import Path
+import os
 import sys
+
+
+def child_environment(role):
+    environment = os.environ.copy()
+    if getattr(sys, 'frozen', False) and role == 'drawer':
+        # The chat can outlive the capture app. Give it its own onefile extraction
+        # so closing the parent cannot remove libraries still used by the chat.
+        environment['PYINSTALLER_RESET_ENVIRONMENT'] = '1'
+    return environment
 
 
 def child_command(role, *arguments):

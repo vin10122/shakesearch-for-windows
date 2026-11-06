@@ -1,7 +1,7 @@
 """ShakeSearch desktop entry point. Qt owns all capture and animation windows."""
 import logging
-from app_runtime import child_command
-from localization import tr
+from app_runtime import child_command, child_environment
+from localization import tr, get_language
 from logging.handlers import RotatingFileHandler
 import math
 import os
@@ -15,7 +15,7 @@ from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from overlay import AnimatedScreenOverlay
-from app_settings import preferences, DISTANCES
+from app_settings import preferences, save_preferences, DISTANCES
 
 SHAKE_DISTANCE_THRESHOLD = 300
 SHAKE_TIME_WINDOW = 0.55
@@ -40,6 +40,7 @@ def report_exception(error_type, error, traceback):
 
 class ShakeSearch(QObject):
     capture_requested = Signal()
+    shake_toggle_requested = Signal()
 
     def __init__(self, application):
         super().__init__()
@@ -47,12 +48,14 @@ class ShakeSearch(QObject):
         self.positions = []
         self.last_shake = 0
         self.mouse_listener = None
+        self.keyboard_listener = None
         self.options = preferences()
         self._last_move = 0.0
         self.panel = None
         self._capture_pending = False
         self.multi_overlay = None
-        self.capture_requested.connect(self.trigger_capture, Qt.ConnectionType.QueuedConnection)
+        self.capture_requested.connect(self.trigger_shake_capture, Qt.ConnectionType.QueuedConnection)
+        self.shake_toggle_requested.connect(self.toggle_shake, Qt.ConnectionType.QueuedConnection)
         self.application.aboutToQuit.connect(self.stop_listeners)
 
     def detect_shake(self, x, y):
@@ -97,6 +100,26 @@ class ShakeSearch(QObject):
     def reload_preferences(self):
         self.options = preferences()
         self.positions = []
+
+    @Slot()
+    def toggle_shake(self):
+        enabled = not self.options['shake_enabled']
+        try:
+            save_preferences(get_language(), enabled, self.options['sensitivity'],
+                             self.options['animation'])
+        except (OSError, ValueError):
+            logger.exception("Unable to save shake activation preference")
+            return
+        self.reload_preferences()
+        if self.panel is not None:
+            self.panel.refresh()
+            self.panel.notify_shake_state()
+
+    @Slot()
+    def trigger_shake_capture(self):
+        # A queued gesture must not open a capture after Gaming mode is enabled.
+        if self.options['shake_enabled']:
+            self.trigger_capture()
 
     def on_move(self, x, y):
         # Bound gesture work for high-polling-rate mice (up to 8,000 events/s).
@@ -146,13 +169,13 @@ class ShakeSearch(QObject):
         self.multi_overlay = None
 
     def stop_listeners(self):
-        for listener in (self.mouse_listener,):
+        for listener in (self.mouse_listener, self.keyboard_listener):
             if listener is not None:
                 listener.stop()
 
     def run(self):
         # Import platform input backends only when starting global input listeners.
-        from pynput import mouse
+        from pynput import mouse, keyboard
         from control_panel import ControlPanel, SettingsDialog
         from localization import read_settings
         from PySide6.QtWidgets import QDialog
@@ -163,8 +186,15 @@ class ShakeSearch(QObject):
                 self.reload_preferences()
             self.mouse_listener = mouse.Listener(on_move=self.on_move)
             self.mouse_listener.start()
+            hotkey = keyboard.HotKey(keyboard.HotKey.parse('<alt>+<f7>'),
+                                    self.shake_toggle_requested.emit)
+            self.keyboard_listener = keyboard.Listener(
+                on_press=lambda key: hotkey.press(self.keyboard_listener.canonical(key)),
+                on_release=lambda key: hotkey.release(self.keyboard_listener.canonical(key)))
+            self.keyboard_listener.start()
             self.panel = ControlPanel(self)
             self.panel.show()
+            QTimer.singleShot(0, self.panel.notify_shake_state)
             logger.info("Ready: shake the mouse or use Select area")
             print("[ShakeSearch] Attivo. Scuoti il mouse o usa Seleziona area. Chiudi la finestra per uscire.", flush=True)
             return self.application.exec()
@@ -214,6 +244,7 @@ class MultiScreenOverlayManager:
             with open(LOG_PATH, 'a', encoding='utf-8') as log:
                 subprocess.Popen(child_command('drawer', path, x, y, width, height),
                                  stdout=log, stderr=log,
+                                 env=child_environment('drawer'),
                                  creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         except Exception:
             logger.exception("Unable to launch chat drawer")

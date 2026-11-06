@@ -1,7 +1,8 @@
 ShakeSearch for Windows 10/11 x64
 
-Extract the entire ZIP, then open ShakeSearch/ShakeSearch.exe.
-Keep the _internal folder next to the executable. Python is included.
+Download and open ShakeSearch.exe. Python and dependencies are included in one file.
+They are extracted temporarily at startup, so launch can take longer.
+No _internal directory needs to sit beside the EXE.
 Microsoft Edge WebView2 Runtime must be installed on Windows.
 No Groq account or API key is needed.
 
@@ -15,7 +16,11 @@ This is an unsigned experimental build. Windows may show a publisher warning.
 The terminal stays visible while ShakeSearch runs. The control window shows
 whether the app is active. On first launch, save your language, mouse-shake
 sensitivity, and animation preferences. Reopen Settings to change them later.
-Use Select area for manual capture. Alt+F7 is no longer registered.
+Use Select area for manual capture. Alt+F7 enables or disables shake detection.
+Disabling shakes enables Gaming mode to avoid interference while gaming with high DPI.
+Select area remains available. Alt+F7 re-enables shakes. The preference is saved.
+Notifications confirm the state at startup and whenever it changes; disabled shakes
+are labelled Gaming mode. Windows notification settings may silence these messages.
 Close the control window or press Quit to stop ShakeSearch.
 
 Copying text from images is coming soon and is not available in this release.

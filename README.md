@@ -10,43 +10,47 @@ is inspired by [Circle to Search](https://blog.google/products/search/google-cir
 
 ## Install on Windows
 
-**Download the portable app: [ShakeSearch-windows-x64.zip](https://github.com/vin10122/shakesearch-for-windows/releases/latest/download/ShakeSearch-windows-x64.zip).**
+**Download the portable app: [ShakeSearch.exe](https://github.com/vin10122/shakesearch-for-windows/releases/latest/download/ShakeSearch.exe).**
 
 You need **Windows 10 or Windows 11 (64-bit)** and
 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
 Python is included: you do not need to install Python, Git, or any Python packages.
 No API key is needed.
 
-1. Download the ZIP using the link above, or open the [latest release](https://github.com/vin10122/shakesearch-for-windows/releases/latest) and select the ZIP under **Assets**. The **Source code** archives are for developers.
-2. Right-click the downloaded ZIP and choose **Extract All / Estrai tutto**. Choose a permanent location where you can write files, such as a folder in Documents.
-3. Open the extracted **ShakeSearch** folder and double-click **ShakeSearch.exe**. Run it from the extracted folder, not from inside the ZIP.
+1. Download **ShakeSearch.exe** using the link above, or open the [latest release](https://github.com/vin10122/shakesearch-for-windows/releases/latest) and select the EXE under **Assets**. The **Source code** archives are for developers; older ZIP assets belong to the previous folder-based build.
+2. Move the EXE to a permanent location where you can write files, such as a folder in Documents.
+3. Double-click **ShakeSearch.exe**.
 4. Complete the first-launch configuration and click **Save / Salva**. The control window shows that the app is active.
 5. Shake the mouse or click **Select area / Seleziona area** to begin.
 
-Keep the entire extracted folder together, including `_internal`. Moving only the
-EXE will break the app. This portable version does not use an MSI or an installation
-wizard. To add a Start shortcut, right-click the extracted EXE and choose **Pin to
+The new portable build is a single EXE containing Python and its dependencies.
+It extracts them to a temporary folder at startup, so launching the app or chat
+can take longer than the older folder-based build. No `_internal` folder needs
+to sit beside the new EXE. WebView2 must still be installed on Windows.
+This version does not use an MSI or an installation wizard.
+To add a Start shortcut, right-click the EXE and choose **Pin to
 Start / Aggiungi a Start** (under **Show more options** if needed).
 
 The build is unsigned. If SmartScreen shows **Windows protected your PC / PC protetto
-da Windows**, check that you downloaded the ZIP from this repository's release.
+da Windows**, check that you downloaded the EXE from this repository's release.
 If you trust that build, choose **More info / Ulteriori informazioni**, then
 **Run anyway / Esegui comunque**, when available.
 
 ### Update an existing copy
 
-You can reuse the same folder; there is no need to create a new one for each release.
+You can reuse the same EXE location for each release.
 
 1. Choose **Quit / Esci** in ShakeSearch and close any remaining chat or Lens windows.
-2. Download the new ZIP using the same download link above.
-3. Extract it into the **parent folder** of your existing `ShakeSearch` folder. For example, if the EXE is at `C:\Apps\ShakeSearch\ShakeSearch.exe`, extract the ZIP into `C:\Apps`.
-4. Accept **Replace the files in the destination / Sostituisci i file nella destinazione**.
+2. Download the new **ShakeSearch.exe** using the same download link above.
+3. Move it to the location of your existing EXE, such as `C:\Apps\ShakeSearch\ShakeSearch.exe`.
+4. Accept **Replace the file in the destination / Sostituisci il file nella destinazione**.
 5. Start `ShakeSearch.exe` from the same folder as before.
 
-The final path should still be `C:\Apps\ShakeSearch\ShakeSearch.exe`, not
-`C:\Apps\ShakeSearch\ShakeSearch\ShakeSearch.exe`. If Windows says files are in use,
+When upgrading from the old ZIP build, replace the old EXE with the new single-file
+EXE; the old `_internal` directory is no longer used by the new build.
+If Windows says files are in use,
 close the running app before retrying. If a pinned shortcut points to an older
-extraction folder, recreate it using the updated EXE.
+app location, recreate it using the updated EXE.
 
 There is no automatic updater. Preferences remain in
 `%LOCALAPPDATA%\ShakeSearch\settings.json` and survive replacing the app files.
@@ -63,8 +67,23 @@ The terminal stays open and the control window shows that ShakeSearch is active:
 - **Settings / Configurazione:** change your saved preferences.
 - **Quit / Esci:** stop the application. Closing the control window also stops it.
 
-There is no Alt+F7 shortcut. The control window minimizes before a capture so it
+Alt+F7 enables or disables mouse-shake detection globally and saves the preference;
+it does not start a capture. The control window minimizes before a capture so it
 does not cover the selected area. Select area works even when mouse activation is off.
+
+### Gaming mode and notifications
+
+Press **Alt+F7** to disable shake detection and enter **Gaming mode**. This avoids
+unwanted captures and interference while playing with a high-DPI mouse. Manual
+**Select area / Seleziona area** remains available. Press **Alt+F7** again to
+re-enable shakes; the preference is saved for the next launch.
+
+ShakeSearch sends a notification at startup and whenever shake detection changes,
+including changes made in Settings. With shakes disabled, the notification says
+**Gaming mode** and explains the high-DPI gaming purpose. With shakes enabled,
+it confirms that shake activation is active. The control window and tray tooltip
+also show the current state. Windows notification settings and Do Not Disturb
+can hide notifications while gaming; the state remains visible in the control window.
 
 **Balanced** animation requests roughly 60 updates per second during the opening
 effect, then 30 for the thin border. **Light** skips the opening effect and draws
@@ -142,11 +161,18 @@ powershell -ExecutionPolicy Bypass -File packaging/build-windows.ps1
 ```
 
 The script creates `.venv-build`, installs dependencies, runs tests, builds with
-PyInstaller, and creates `dist/ShakeSearch-windows-x64.zip`. Chat and Lens run as isolated roles of the same executable.
+PyInstaller in onefile mode, and creates `dist/ShakeSearch.exe`. It then smoke-tests
+bundled native dependencies and an independent child process before publishing.
+Chat and Lens run as isolated roles of the same executable.
 
 The **Windows portable build** GitHub Actions workflow can run manually. Pushing a
-`v*` tag builds and publishes a release with the ZIP after tests pass. Manual runs
-provide a downloadable workflow artifact. Test screen capture, windows, clipboard,
+`v*` tag builds and publishes a release with the EXE after tests pass. Manual runs
+provide a downloadable workflow artifact. To update an existing release without
+moving its tag, run the workflow from the desired source ref and set `release_tag`
+(for example `v0.1.6`). It uploads the EXE and updates the notes with the build's
+source commit; an existing legacy ZIP asset is retained for compatibility.
+Pushing a `release/vX.Y.Z` branch also builds and updates that existing release.
+Test screen capture, windows, clipboard,
 and live Lens on a Windows desktop before distributing.
 
 ## Development checks

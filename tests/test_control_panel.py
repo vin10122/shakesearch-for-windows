@@ -55,14 +55,94 @@ class ConfigurationTests(unittest.TestCase):
                 controller.on_move(3, 3)
             self.assertEqual(detect.call_count, 2)
 
-    def test_control_window_has_manual_capture_and_no_keyboard_listener(self):
+    def test_control_window_has_manual_capture(self):
         controller = ShakeSearch(self.app)
         panel = ControlPanel(controller)
         with patch.object(controller, 'trigger_capture') as capture:
             panel.capture.click()
             capture.assert_called_once()
-        self.assertFalse(hasattr(controller, 'hotkey_listener'))
         panel.deleteLater()
+
+    def test_hotkey_toggles_only_shakes_and_preserves_manual_capture(self):
+        save_preferences('en', True, 'high', 'light')
+        controller = ShakeSearch(self.app)
+        controller.panel = ControlPanel(controller)
+        controller.positions = [(1, 2, 3)]
+        with patch.object(controller, 'trigger_capture') as capture:
+            controller.shake_toggle_requested.emit()
+            self.app.processEvents()
+            self.assertFalse(controller.options['shake_enabled'])
+            self.assertFalse(preferences()['shake_enabled'])
+            self.assertEqual(controller.positions, [])
+            self.assertEqual(controller.options['sensitivity'], 'high')
+            self.assertEqual(controller.options['animation'], 'light')
+            self.assertIn('Alt+F7', controller.panel.status.text())
+            capture.assert_not_called()
+            controller.panel.capture.click()
+            capture.assert_called_once()
+            controller.shake_toggle_requested.emit()
+            self.app.processEvents()
+            self.assertTrue(preferences()['shake_enabled'])
+            self.assertEqual(capture.call_count, 1)
+        controller.panel.deleteLater()
+
+    def test_toggle_save_failure_keeps_shake_state(self):
+        controller = ShakeSearch(self.app)
+        with patch('shakesearch.save_preferences', side_effect=OSError('read only')), \
+                self.assertLogs('shakesearch', level='ERROR'):
+            controller.toggle_shake()
+        self.assertTrue(controller.options['shake_enabled'])
+
+    def test_notifications_describe_gaming_mode_and_reactivation(self):
+        for language in ('it', 'en'):
+            with self.subTest(language=language):
+                save_preferences(language, True, 'normal', 'balanced')
+                controller = ShakeSearch(self.app)
+                panel = ControlPanel(controller)
+                controller.panel = panel
+                panel.tray = Mock()
+                with patch('control_panel.QSystemTrayIcon.isSystemTrayAvailable', return_value=True):
+                    panel.notify_shake_state()
+                    self.assertNotIn('Gaming mode', panel.tray.showMessage.call_args.args[0])
+                    controller.toggle_shake()
+                    title, message = panel.tray.showMessage.call_args.args[:2]
+                    self.assertIn('Gaming mode', title)
+                    self.assertIn('DPI', message)
+                    self.assertIn('Gaming mode', panel.status.text())
+                    controller.toggle_shake()
+                    self.assertNotIn('Gaming mode', panel.tray.showMessage.call_args.args[0])
+                    self.assertEqual(panel.tray.showMessage.call_count, 3)
+                panel.deleteLater()
+
+    def test_settings_change_notifies_shake_state(self):
+        controller = ShakeSearch(self.app)
+        panel = ControlPanel(controller)
+        def accept():
+            save_preferences('it', False, 'normal', 'balanced')
+            return QDialog.DialogCode.Accepted
+        with patch('control_panel.SettingsDialog') as dialog, \
+                patch.object(panel, 'notify_shake_state') as notify:
+            dialog.return_value.exec.side_effect = accept
+            panel.settings()
+            notify.assert_called_once()
+            self.assertIn('Gaming mode', panel.status.text())
+        panel.deleteLater()
+
+    def test_queued_shake_does_not_capture_after_gaming_mode_is_enabled(self):
+        controller = ShakeSearch(self.app)
+        with patch.object(controller, 'trigger_capture') as capture:
+            controller.capture_requested.emit()
+            controller.toggle_shake()
+            self.app.processEvents()
+            capture.assert_not_called()
+
+    def test_shutdown_stops_mouse_and_keyboard_listeners(self):
+        controller = ShakeSearch(self.app)
+        controller.mouse_listener = Mock()
+        controller.keyboard_listener = Mock()
+        controller.stop_listeners()
+        controller.mouse_listener.stop.assert_called_once()
+        controller.keyboard_listener.stop.assert_called_once()
 
     def test_light_mode_skips_plasma_and_keeps_border(self):
         from PySide6.QtCore import QRect

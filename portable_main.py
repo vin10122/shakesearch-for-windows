@@ -3,8 +3,36 @@ import multiprocessing
 import sys
 
 
+def smoke_test(child=False):
+    """Validate bundled native libraries and an independent onefile child."""
+    import subprocess
+    import cv2
+    import numpy as np
+    from PIL import Image
+    from PySide6.QtGui import QImage
+    import webview.platforms.edgechromium
+    import win32clipboard
+    from app_icon import icon_path
+    from app_runtime import child_environment
+
+    assert icon_path().is_file(), 'Bundled icon is missing'
+    assert not QImage(8, 8, QImage.Format.Format_ARGB32).isNull()
+    assert Image.new('RGB', (8, 8)).size == (8, 8)
+    assert cv2.cvtColor(np.zeros((8, 8, 3), np.uint8), cv2.COLOR_BGR2GRAY).shape == (8, 8)
+    if not child:
+        result = subprocess.run([sys.executable, '--self-test-child'],
+                                env=child_environment('drawer'), capture_output=True,
+                                text=True, timeout=120)
+        if result.returncode or 'ShakeSearch bundle OK' not in result.stdout:
+            raise RuntimeError('Bundled child failed: ' + result.stdout + result.stderr)
+    print('ShakeSearch bundle OK', flush=True)
+    return 0
+
+
 def main():
     multiprocessing.freeze_support()
+    if len(sys.argv) == 2 and sys.argv[1] in ('--self-test', '--self-test-child'):
+        return smoke_test(child=sys.argv[1] == '--self-test-child')
     if len(sys.argv) >= 3 and sys.argv[1] == '--role':
         role = sys.argv[2]
         sys.argv = [sys.argv[0]] + sys.argv[3:]

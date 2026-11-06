@@ -8,7 +8,8 @@ a = Analysis(
     [str(root / 'portable_main.py')],
     pathex=[str(root)],
     binaries=webview_binaries,
-    datas=webview_data + [(str(root / 'logo-shakesearch.png'), '.'), (str(root / 'assets' / 'shakesearch.ico'), 'assets')],
+    datas=webview_data + [(str(root / 'logo-shakesearch.png'), '.'), (str(root / 'assets' / 'shakesearch.ico'), 'assets'),
+        (str(root / 'LICENSE'), '.'), (str(root / 'packaging' / 'PORTABLE.txt'), '.')],
     hiddenimports=webview_hidden + ['webview.platforms.edgechromium',
         'pynput.keyboard._win32', 'pynput.mouse._win32', 'win32clipboard',
         'win32con', 'clr'],
@@ -18,6 +19,5 @@ a = Analysis(
 pyz = PYZ(a.pure)
 # Retain redirected standard streams for the Lens JSON-lines protocol.
 # Keep the main console visible for status and errors; children use CREATE_NO_WINDOW.
-exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='ShakeSearch', icon=str(root / 'assets' / 'shakesearch.ico'),
+exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name='ShakeSearch', icon=str(root / 'assets' / 'shakesearch.ico'),
           debug=False, strip=False, upx=False, console=True)
-coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name='ShakeSearch')
