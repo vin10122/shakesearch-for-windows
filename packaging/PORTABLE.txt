@@ -17,6 +17,8 @@ The terminal stays visible while ShakeSearch runs. The control window shows
 whether the app is active. On first launch, save your language, mouse-shake
 sensitivity, and animation preferences. Reopen Settings to change them later.
 Use Select area for manual capture. Alt+F7 enables or disables shake detection.
+Use the main window's Shake attivi / Shakes enabled toggle to switch modes directly,
+without a keyboard shortcut. The app remains usable even if Alt+F7 is unavailable.
 Disabling shakes enables Gaming mode to avoid interference while gaming with high DPI.
 Select area remains available. Alt+F7 re-enables shakes. The preference is saved.
 Notifications confirm the state at startup and whenever it changes; disabled shakes

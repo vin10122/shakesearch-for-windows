@@ -46,7 +46,9 @@ jobs:
 
           Python è incluso. È necessario Microsoft Edge WebView2 Runtime. Non serve una chiave API: ricerca e domande usano Google Lens.
 
-          Gestione comandi riscritta nella build 0.1.6-gaming.2: Alt+F7 è registrato direttamente con Windows e serve soltanto ad attivare/disattivare gli shake. Non esiste un comando tastiera per acquisire lo schermo. Niente hook pynput: il mouse viene controllato da un timer che si ferma completamente in Gaming mode.
+          Build 0.1.6-gaming.3: interruttore «Shake attivi» nella finestra principale. Disattivalo per entrare in Gaming mode e fermare completamente il rilevamento del mouse; riattivalo per riprendere gli shake. Non serve premere Alt+F7. Seleziona area resta disponibile e la preferenza viene salvata.
+
+          Alt+F7 rimane facoltativo e serve soltanto ad attivare/disattivare gli shake. Se la scorciatoia non è disponibile, l'app si avvia comunque e si usa l'interruttore. Non esiste un comando tastiera per acquisire lo schermo.
 
           Notifica dello stato all'avvio e a ogni cambio. Quando gli shake sono disattivati, la Gaming mode evita interferenze mentre giochi con DPI alti. Seleziona area resta sempre disponibile. Lo stato viene salvato tra gli avvii. Le notifiche seguono le impostazioni di Windows e possono essere silenziate durante il gioco. Chiudi tutte le vecchie istanze prima di avviare il nuovo EXE.
 
@@ -63,7 +65,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Existing release not found' }
             gh release upload $env:RELEASE_TAG dist/ShakeSearch.exe --clobber
             if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
-            gh release edit $env:RELEASE_TAG --title "ShakeSearch $env:RELEASE_TAG — Native input / Gaming mode 2" --notes-file release-notes.txt
+            gh release edit $env:RELEASE_TAG --title "ShakeSearch $env:RELEASE_TAG — Gaming mode toggle" --notes-file release-notes.txt
             if ($LASTEXITCODE -ne 0) { throw 'Release notes update failed' }
             $assets = gh release view $env:RELEASE_TAG --json assets --jq '.assets[].name'
             if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect release assets' }

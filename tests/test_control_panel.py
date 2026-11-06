@@ -63,7 +63,7 @@ class ConfigurationTests(unittest.TestCase):
             self.assertFalse(controller.inputs.detector.points)
             self.assertEqual(controller.options['sensitivity'], 'high')
             self.assertEqual(controller.options['animation'], 'light')
-            self.assertIn('Alt+F7', controller.panel.status.text())
+            self.assertFalse(controller.panel.shake_toggle.isChecked())
             capture.assert_not_called()
             controller.panel.capture.click()
             capture.assert_called_once()
@@ -79,6 +79,44 @@ class ConfigurationTests(unittest.TestCase):
                 self.assertLogs('shakesearch', level='ERROR'):
             controller.toggle_shake()
         self.assertTrue(controller.options['shake_enabled'])
+
+    def test_panel_toggle_stops_shakes_saves_state_and_preserves_manual_capture(self):
+        controller = ShakeSearch(self.app)
+        controller.panel = ControlPanel(controller)
+        panel = controller.panel
+        with patch.object(controller.inputs.hotkey, 'start'), \
+                patch.object(controller.inputs.hotkey, 'stop'), \
+                patch.object(panel, 'notify_shake_state') as notify, \
+                patch.object(controller, '_request_capture') as capture:
+            controller.inputs.start()
+            self.assertTrue(controller.inputs.timer.isActive())
+            panel.shake_toggle.click()
+            self.assertFalse(controller.inputs.timer.isActive())
+            self.assertFalse(preferences()['shake_enabled'])
+            self.assertIn('Gaming mode', panel.status.text())
+            capture.assert_not_called()
+            panel.capture.click()
+            capture.assert_called_once_with()
+            fresh = ShakeSearch(self.app)
+            self.assertFalse(fresh.options['shake_enabled'])
+            panel.shake_toggle.click()
+            self.assertTrue(controller.inputs.timer.isActive())
+            self.assertTrue(preferences()['shake_enabled'])
+            self.assertEqual(notify.call_count, 2)
+            controller.inputs.stop()
+        panel.deleteLater()
+
+    def test_panel_toggle_restores_state_when_saving_fails(self):
+        controller = ShakeSearch(self.app)
+        controller.panel = ControlPanel(controller)
+        with patch('shakesearch.save_preferences', side_effect=OSError('read only')), \
+                patch('shakesearch.QMessageBox.warning') as warning, \
+                self.assertLogs('shakesearch', level='ERROR'):
+            controller.panel.shake_toggle.click()
+        self.assertTrue(controller.options['shake_enabled'])
+        self.assertTrue(controller.panel.shake_toggle.isChecked())
+        warning.assert_called_once()
+        controller.panel.deleteLater()
 
     def test_disabling_shakes_cancels_delayed_capture_even_after_reenabling(self):
         controller = ShakeSearch(self.app)

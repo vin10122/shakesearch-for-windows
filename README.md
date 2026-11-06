@@ -73,9 +73,10 @@ does not cover the selected area. Select area works even when mouse activation i
 
 ### Gaming mode and notifications
 
-Press **Alt+F7** to disable shake detection and enter **Gaming mode**. This avoids
+In the main window, turn off **Shake attivi / Shakes enabled** to disable shake
+detection and enter **Gaming mode**, without using a keyboard shortcut. This avoids
 unwanted captures and interference while playing with a high-DPI mouse. Manual
-**Select area / Seleziona area** remains available. Press **Alt+F7** again to
+**Select area / Seleziona area** remains available. Turn the toggle on again to
 re-enable shakes; the preference is saved for the next launch.
 
 ShakeSearch sends a notification at startup and whenever shake detection changes,
@@ -85,11 +86,11 @@ it confirms that shake activation is active. The control window and tray tooltip
 also show the current state. Windows notification settings and Do Not Disturb
 can hide notifications while gaming; the state remains visible in the control window.
 
-Build **0.1.6-gaming.2** replaces the input system: Windows registers Alt+F7
+Build **0.1.6-gaming.3** adds the main-window toggle. Windows also registers Alt+F7
 natively with key repeat disabled, and a Qt timer samples mouse position only
 while shakes are enabled. Gaming mode stops that timer entirely. No keyboard
-shortcut starts screen capture. A busy Alt+F7 shortcut produces a visible error
-instead of silently failing. The version appears in the control window title.
+shortcut starts screen capture. If Alt+F7 is unavailable, the app still starts:
+use the visible toggle. The version appears in the control window title.
 Close all older ShakeSearch instances before opening this EXE; a running older
 version can keep its old keyboard behavior. The new version prevents duplicate
 main instances of itself.

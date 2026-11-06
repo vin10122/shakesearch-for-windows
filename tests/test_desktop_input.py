@@ -86,10 +86,13 @@ class DesktopInputTests(unittest.TestCase):
         self.assertEqual(hotkey.nativeEventFilter(b'windows_dispatcher_MSG', ctypes.addressof(event)), (False, 0))
         self.assertEqual(toggle.call_count, 1)
 
-    def test_registration_failure_is_reported_and_never_starts_polling(self):
+    def test_registration_failure_keeps_panel_workflow_available(self):
         inputs = DesktopInput(self.app)
         with patch.object(inputs.hotkey, 'start', side_effect=RuntimeError('Shortcut busy')):
-            with self.assertRaisesRegex(RuntimeError, 'Shortcut busy'):
-                inputs.start()
+            inputs.configure(True, 'normal')
+            inputs.start()
+        self.assertEqual(inputs.hotkey_error, 'Shortcut busy')
+        self.assertTrue(inputs.timer.isActive())
+        inputs.configure(False, 'normal')
         self.assertFalse(inputs.timer.isActive())
-        self.assertFalse(inputs.running)
+        inputs.stop()

@@ -53,12 +53,21 @@ class ShakeSearch(QObject):
 
     @Slot()
     def toggle_shake(self):
-        enabled = not self.options['shake_enabled']
+        self.set_shake_enabled(not self.options['shake_enabled'])
+
+    @Slot(bool)
+    def set_shake_enabled(self, enabled):
+        if enabled == self.options['shake_enabled']:
+            return
         try:
             save_preferences(get_language(), enabled, self.options['sensitivity'],
                              self.options['animation'])
         except (OSError, ValueError):
             logger.exception("Unable to save shake activation preference")
+            if self.panel is not None:
+                self.panel.refresh()
+                QMessageBox.warning(self.panel, 'ShakeSearch',
+                                    'Impossibile salvare la modalità. / Unable to save mode.')
             return
         self.reload_preferences()
         if self.panel is not None:
@@ -127,12 +136,9 @@ class ShakeSearch(QObject):
                 if SettingsDialog().exec() != QDialog.DialogCode.Accepted:
                     return 0
                 self.reload_preferences()
-            try:
-                self.inputs.start()
-            except RuntimeError as error:
-                logger.exception('Unable to register shake toggle shortcut')
-                QMessageBox.warning(None, 'ShakeSearch — Alt+F7', str(error))
-                return 1
+            self.inputs.start()
+            if self.inputs.hotkey_error:
+                logger.warning('Alt+F7 unavailable; use the panel toggle: %s', self.inputs.hotkey_error)
             self.panel = ControlPanel(self)
             self.panel.show()
             QTimer.singleShot(0, self.panel.notify_shake_state)

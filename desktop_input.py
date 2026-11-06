@@ -102,6 +102,7 @@ class DesktopInput(QObject):
         self.sensitivity = 'normal'
         self.generation = 0
         self.running = False
+        self.hotkey_error = None
         self.timer = QTimer(self)
         self.timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.timer.setInterval(8)
@@ -118,7 +119,12 @@ class DesktopInput(QObject):
             self.timer.start()
 
     def start(self):
-        self.hotkey.start()
+        self.hotkey_error = None
+        try:
+            self.hotkey.start()
+        except RuntimeError as error:
+            # The panel toggle and manual capture must work without a shortcut.
+            self.hotkey_error = str(error)
         self.running = True
         if self.enabled:
             self.timer.start()

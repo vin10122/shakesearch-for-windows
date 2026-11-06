@@ -70,6 +70,9 @@ class ControlPanel(QMainWindow):
         self.status = QLabel()
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
+        self.shake_toggle = QCheckBox()
+        self.shake_toggle.toggled.connect(controller.set_shake_enabled)
+        layout.addWidget(self.shake_toggle)
         self.capture = QPushButton()
         self.capture.clicked.connect(self.capture_now)
         layout.addWidget(self.capture)
@@ -85,6 +88,10 @@ class ControlPanel(QMainWindow):
         title, message = self.shake_status()
         self.status.setText(title + '\n' + message)
         self.tray.setToolTip(title)
+        self.shake_toggle.blockSignals(True)
+        self.shake_toggle.setChecked(self.controller.options['shake_enabled'])
+        self.shake_toggle.blockSignals(False)
+        self.shake_toggle.setText(label('Shake attivi', 'Shakes enabled'))
         self.capture.setText(label('Seleziona area', 'Select area'))
         self.configure.setText(label('Configurazione', 'Settings'))
         self.quit_button.setText(label('Esci', 'Quit'))
@@ -92,13 +99,13 @@ class ControlPanel(QMainWindow):
     def shake_status(self):
         if self.controller.options['shake_enabled']:
             return (label('ShakeSearch — Shake attivi', 'ShakeSearch — Shakes enabled'),
-                    label('Scuoti il mouse oppure premi Seleziona area. Alt+F7 attiva la Gaming mode.',
-                          'Shake the mouse or press Select area. Alt+F7 enables Gaming mode.'))
+                    label('Disattiva «Shake attivi» per entrare in Gaming mode. Seleziona area resta disponibile.',
+                          'Turn off “Shakes enabled” to enter Gaming mode. Select area remains available.'))
         return ('ShakeSearch — Gaming mode',
                 label('Shake disattivati per evitare interferenze mentre giochi con DPI alti. '
-                      'Seleziona area resta disponibile. Alt+F7 riattiva gli shake.',
+                      'Seleziona area resta disponibile. Attiva «Shake attivi» per riabilitare gli shake.',
                       'Shakes disabled to avoid interference while gaming with high DPI. '
-                      'Select area remains available. Alt+F7 re-enables shakes.'))
+                      'Select area remains available. Turn on “Shakes enabled” to re-enable shakes.'))
 
     def notify_shake_state(self):
         title, message = self.shake_status()
