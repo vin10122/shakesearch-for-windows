@@ -3,24 +3,19 @@ import logging
 from app_runtime import child_command, child_environment
 from localization import tr, get_language
 from logging.handlers import RotatingFileHandler
-import math
 import os
 import subprocess
 import sys
 import tempfile
-import time
 
-from PySide6.QtCore import QObject, Signal, Slot, Qt, QTimer
+from PySide6.QtCore import QObject, QLockFile, Slot, QTimer
 from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from overlay import AnimatedScreenOverlay
-from app_settings import preferences, save_preferences, DISTANCES
+from app_settings import preferences, save_preferences
+from desktop_input import DesktopInput
 
-SHAKE_DISTANCE_THRESHOLD = 300
-SHAKE_TIME_WINDOW = 0.55
-SHAKE_MIN_REVERSALS = 4
-SHAKE_DEBOUNCE = 0.8
 logger = logging.getLogger("shakesearch")
 LOG_PATH = os.path.join(tempfile.gettempdir(), "shakesearch.log")
 
@@ -39,69 +34,22 @@ def report_exception(error_type, error, traceback):
 
 
 class ShakeSearch(QObject):
-    capture_requested = Signal()
-    shake_toggle_requested = Signal()
-
     def __init__(self, application):
         super().__init__()
         self.application = application
-        self.positions = []
-        self.last_shake = 0
-        self.mouse_listener = None
-        self.keyboard_listener = None
+        self.inputs = DesktopInput(application)
         self.options = preferences()
-        self._last_move = 0.0
         self.panel = None
         self._capture_pending = False
-        self._shake_generation = 0
         self.multi_overlay = None
-        self.capture_requested.connect(self.trigger_shake_capture, Qt.ConnectionType.QueuedConnection)
-        self.shake_toggle_requested.connect(self.toggle_shake, Qt.ConnectionType.QueuedConnection)
+        self.inputs.configure(self.options['shake_enabled'], self.options['sensitivity'])
+        self.inputs.shake_detected.connect(self.trigger_shake_capture)
+        self.inputs.toggle_requested.connect(self.toggle_shake)
         self.application.aboutToQuit.connect(self.stop_listeners)
 
-    def detect_shake(self, x, y):
-        now = time.time()
-        self.positions.append((x, y, now))
-        cutoff = now - SHAKE_TIME_WINDOW
-        self.positions = [(px, py, pt) for px, py, pt in self.positions if pt > cutoff]
-
-        if len(self.positions) < 6:
-            return False
-
-        total_distance = sum(
-            math.hypot(self.positions[i][0] - self.positions[i - 1][0],
-                       self.positions[i][1] - self.positions[i - 1][1])
-            for i in range(1, len(self.positions))
-        )
-        if total_distance < DISTANCES[self.options['sensitivity']]:
-            return False
-
-        dx_signs = []
-        dy_signs = []
-        for i in range(1, len(self.positions)):
-            dx = self.positions[i][0] - self.positions[i - 1][0]
-            dy = self.positions[i][1] - self.positions[i - 1][1]
-            if abs(dx) > 12:
-                dx_signs.append(1 if dx > 0 else -1)
-            if abs(dy) > 12:
-                dy_signs.append(1 if dy > 0 else -1)
-
-        x_reversals = sum(1 for i in range(1, len(dx_signs)) if dx_signs[i] != dx_signs[i - 1])
-        y_reversals = sum(1 for i in range(1, len(dy_signs)) if dy_signs[i] != dy_signs[i - 1])
-
-        if (x_reversals >= SHAKE_MIN_REVERSALS or y_reversals >= SHAKE_MIN_REVERSALS):
-            if now - self.last_shake > SHAKE_DEBOUNCE:
-                self.last_shake = now
-                self.positions = []
-                print("[ShakeSearch] Shake detected!")
-                return True
-
-        return False
-
     def reload_preferences(self):
-        self._shake_generation += 1
         self.options = preferences()
-        self.positions = []
+        self.inputs.configure(self.options['shake_enabled'], self.options['sensitivity'])
 
     @Slot()
     def toggle_shake(self):
@@ -117,20 +65,10 @@ class ShakeSearch(QObject):
             self.panel.refresh()
             self.panel.notify_shake_state()
 
-    @Slot()
-    def trigger_shake_capture(self):
-        # A queued gesture must not open a capture after Gaming mode is enabled.
-        if self.options['shake_enabled']:
-            self._request_capture(self._shake_generation)
-
-    def on_move(self, x, y):
-        # Bound gesture work for high-polling-rate mice (up to 8,000 events/s).
-        now = time.monotonic()
-        if not self.options['shake_enabled'] or now - self._last_move < .008:
-            return
-        self._last_move = now
-        if self.detect_shake(x, y):
-            self.capture_requested.emit()
+    @Slot(int)
+    def trigger_shake_capture(self, generation):
+        if self.options['shake_enabled'] and generation == self.inputs.generation:
+            self._request_capture(generation)
 
     @Slot()
     def trigger_capture(self):
@@ -150,7 +88,7 @@ class ShakeSearch(QObject):
     def _capture_after_hide(self, shake_generation=None):
         self._capture_pending = False
         if shake_generation is not None and (
-                shake_generation != self._shake_generation or not self.options['shake_enabled']):
+                shake_generation != self.inputs.generation or not self.options['shake_enabled']):
             return
         try:
             screen_data = self.capture_all_screens()
@@ -178,22 +116,9 @@ class ShakeSearch(QObject):
         self.multi_overlay = None
 
     def stop_listeners(self):
-        for listener in (self.mouse_listener, self.keyboard_listener):
-            if listener is not None:
-                listener.stop()
-
-    def start_shake_toggle_hotkey(self, keyboard):
-        # Alt+F7 has exactly one action: toggle shake reception. Never capture.
-        hotkey = keyboard.HotKey(keyboard.HotKey.parse('<alt>+<f7>'),
-                                self.shake_toggle_requested.emit)
-        self.keyboard_listener = keyboard.Listener(
-            on_press=lambda key: hotkey.press(self.keyboard_listener.canonical(key)),
-            on_release=lambda key: hotkey.release(self.keyboard_listener.canonical(key)))
-        self.keyboard_listener.start()
+        self.inputs.stop()
 
     def run(self):
-        # Import platform input backends only when starting global input listeners.
-        from pynput import mouse, keyboard
         from control_panel import ControlPanel, SettingsDialog
         from localization import read_settings
         from PySide6.QtWidgets import QDialog
@@ -202,9 +127,12 @@ class ShakeSearch(QObject):
                 if SettingsDialog().exec() != QDialog.DialogCode.Accepted:
                     return 0
                 self.reload_preferences()
-            self.mouse_listener = mouse.Listener(on_move=self.on_move)
-            self.mouse_listener.start()
-            self.start_shake_toggle_hotkey(keyboard)
+            try:
+                self.inputs.start()
+            except RuntimeError as error:
+                logger.exception('Unable to register shake toggle shortcut')
+                QMessageBox.warning(None, 'ShakeSearch — Alt+F7', str(error))
+                return 1
             self.panel = ControlPanel(self)
             self.panel.show()
             QTimer.singleShot(0, self.panel.notify_shake_state)
@@ -285,12 +213,24 @@ def main():
     configure_qt_icon(application)
     application.setQuitOnLastWindowClosed(False)
     application.setApplicationName("ShakeSearch")
+    from localization import settings_path
+    lock_path = settings_path().with_name('app.lock')
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    instance_lock = QLockFile(str(lock_path))
+    instance_lock.setStaleLockTime(0)
+    if not instance_lock.tryLock(0):
+        QMessageBox.information(None, 'ShakeSearch',
+                                'ShakeSearch is already running. Close the previous instance first.\n'
+                                'ShakeSearch è già aperto. Chiudi prima la precedente istanza.')
+        return 0
     controller = ShakeSearch(application)
     try:
         return controller.run()
     except Exception:
         logger.exception("ShakeSearch stopped")
         raise
+    finally:
+        instance_lock.unlock()
 
 
 if __name__ == "__main__":

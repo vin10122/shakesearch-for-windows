@@ -247,7 +247,7 @@ class OverlayTests(unittest.TestCase):
         controller = ShakeSearch(self.app)
         calls = []
         with patch.object(controller, 'capture_all_screens', side_effect=lambda: calls.append(threading.get_ident()) or [self.data]), patch('shakesearch.MultiScreenOverlayManager'):
-            thread = threading.Thread(target=controller.capture_requested.emit)
+            thread = threading.Thread(target=controller.inputs.shake_detected.emit, args=(controller.inputs.generation,))
             thread.start()
             thread.join()
             QTest.qWait(50)

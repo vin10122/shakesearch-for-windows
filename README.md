@@ -85,6 +85,15 @@ it confirms that shake activation is active. The control window and tray tooltip
 also show the current state. Windows notification settings and Do Not Disturb
 can hide notifications while gaming; the state remains visible in the control window.
 
+Build **0.1.6-gaming.2** replaces the input system: Windows registers Alt+F7
+natively with key repeat disabled, and a Qt timer samples mouse position only
+while shakes are enabled. Gaming mode stops that timer entirely. No keyboard
+shortcut starts screen capture. A busy Alt+F7 shortcut produces a visible error
+instead of silently failing. The version appears in the control window title.
+Close all older ShakeSearch instances before opening this EXE; a running older
+version can keep its old keyboard behavior. The new version prevents duplicate
+main instances of itself.
+
 **Balanced** animation requests roughly 60 updates per second during the opening
 effect, then 30 for the thin border. **Light** skips the opening effect and draws
 only the border. These are timer targets, not measured frame rates. Mouse gesture
@@ -170,7 +179,7 @@ The **Windows portable build** GitHub Actions workflow can run manually. Pushing
 provide a downloadable workflow artifact. To update an existing release without
 moving its tag, run the workflow from the desired source ref and set `release_tag`
 (for example `v0.1.6`). It uploads the EXE and updates the notes with the build's
-source commit; an existing legacy ZIP asset is retained for compatibility.
+source commit; the obsolete folder-based ZIP asset is removed after successful upload.
 Pushing a `release/vX.Y.Z` branch also builds and updates that existing release.
 Test screen capture, windows, clipboard,
 and live Lens on a Windows desktop before distributing.

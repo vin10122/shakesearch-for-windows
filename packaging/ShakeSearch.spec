@@ -11,7 +11,7 @@ a = Analysis(
     datas=webview_data + [(str(root / 'logo-shakesearch.png'), '.'), (str(root / 'assets' / 'shakesearch.ico'), 'assets'),
         (str(root / 'LICENSE'), '.'), (str(root / 'packaging' / 'PORTABLE.txt'), '.')],
     hiddenimports=webview_hidden + ['webview.platforms.edgechromium',
-        'pynput.keyboard._win32', 'pynput.mouse._win32', 'win32clipboard',
+        'win32clipboard',
         'win32con', 'clr'],
     excludes=['tkinter', 'PyQt5', 'PyQt6', 'PySide2'],
     noarchive=False,

@@ -14,11 +14,13 @@ def smoke_test(child=False):
     import win32clipboard
     from app_icon import icon_path
     from app_runtime import child_environment
+    from desktop_input import verify_native_hotkey
 
     assert icon_path().is_file(), 'Bundled icon is missing'
     assert not QImage(8, 8, QImage.Format.Format_ARGB32).isNull()
     assert Image.new('RGB', (8, 8)).size == (8, 8)
     assert cv2.cvtColor(np.zeros((8, 8, 3), np.uint8), cv2.COLOR_BGR2GRAY).shape == (8, 8)
+    verify_native_hotkey()
     if not child:
         result = subprocess.run([sys.executable, '--self-test-child'],
                                 env=child_environment('drawer'), capture_output=True,

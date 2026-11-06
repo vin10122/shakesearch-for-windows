@@ -46,7 +46,9 @@ jobs:
 
           Python è incluso. È necessario Microsoft Edge WebView2 Runtime. Non serve una chiave API: ricerca e domande usano Google Lens.
 
-          Alt+F7 attiva o disattiva solo gli shake, con notifica dello stato all'avvio e a ogni cambio. Quando gli shake sono disattivati, la Gaming mode evita interferenze mentre giochi con DPI alti. Seleziona area resta sempre disponibile. Lo stato viene salvato tra gli avvii. Le notifiche seguono le impostazioni di Windows e possono essere silenziate durante il gioco.
+          Gestione comandi riscritta nella build 0.1.6-gaming.2: Alt+F7 è registrato direttamente con Windows e serve soltanto ad attivare/disattivare gli shake. Non esiste un comando tastiera per acquisire lo schermo. Niente hook pynput: il mouse viene controllato da un timer che si ferma completamente in Gaming mode.
+
+          Notifica dello stato all'avvio e a ogni cambio. Quando gli shake sono disattivati, la Gaming mode evita interferenze mentre giochi con DPI alti. Seleziona area resta sempre disponibile. Lo stato viene salvato tra gli avvii. Le notifiche seguono le impostazioni di Windows e possono essere silenziate durante il gioco. Chiudi tutte le vecchie istanze prima di avviare il nuovo EXE.
 
           Terminale e finestra di stato visibili, configurazione al primo avvio, sensibilità del mouse regolabile e modalità di animazione leggera. La finestra Lens si apre con le dimensioni della chat.
 
@@ -61,7 +63,14 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Existing release not found' }
             gh release upload $env:RELEASE_TAG dist/ShakeSearch.exe --clobber
             if ($LASTEXITCODE -ne 0) { throw 'Release upload failed' }
-            gh release edit $env:RELEASE_TAG --title "ShakeSearch $env:RELEASE_TAG — Gaming mode / single EXE" --notes-file release-notes.txt
+            gh release edit $env:RELEASE_TAG --title "ShakeSearch $env:RELEASE_TAG — Native input / Gaming mode 2" --notes-file release-notes.txt
+            if ($LASTEXITCODE -ne 0) { throw 'Release notes update failed' }
+            $assets = gh release view $env:RELEASE_TAG --json assets --jq '.assets[].name'
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect release assets' }
+            if ($assets -contains 'ShakeSearch-windows-x64.zip') {
+              gh release delete-asset $env:RELEASE_TAG ShakeSearch-windows-x64.zip --yes
+              if ($LASTEXITCODE -ne 0) { throw 'Cannot remove obsolete folder-based build' }
+            }
           } else {
             gh release create $env:RELEASE_TAG dist/ShakeSearch.exe --verify-tag --title "ShakeSearch $env:RELEASE_TAG — Gaming mode / single EXE" --notes-file release-notes.txt
           }
